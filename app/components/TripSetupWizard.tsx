@@ -6,6 +6,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import clsx from 'clsx';
 import { useChats, TripContext, TransportationStyle, AccommodationStyle, TripGoal, ItineraryStop } from '../context/ChatsContext';
 import { useProfile } from '../context/ProfileContext';
+import { useTranslations } from '../context/LocaleContext';
 
 // Country list for autocomplete
 const COUNTRIES = [
@@ -121,6 +122,10 @@ function ToggleChip({ selected, onClick, children }: { selected: boolean; onClic
 export default function TripSetupWizard({ isOpen, onClose, chatId }: TripSetupWizardProps) {
   const { activeChat, updateTripContext, markTripSetupComplete, updateChat } = useChats();
   const { profile } = useProfile();
+  const t = useTranslations('tripSetup');
+  const tGoals = useTranslations('tripGoals');
+  const tCommon = useTranslations('common');
+  const tProfile = useTranslations('profile');
 
   const [step, setStep] = useState(0);
   const totalSteps = 5;
@@ -268,20 +273,20 @@ export default function TripSetupWizard({ isOpen, onClose, chatId }: TripSetupWi
         return (
           <div className="space-y-6">
             <div className="text-center">
-              <h3 className="text-xl font-bold text-orange-500 mb-2">Where are you heading?</h3>
-              <p className="text-sm text-stone-400">Let's start with your destination and basic logistics</p>
+              <h3 className="text-xl font-bold text-orange-500 mb-2">{t('whereHeading')}</h3>
+              <p className="text-sm text-stone-400">{t('startWithDestination')}</p>
             </div>
 
             <div className="space-y-4">
               <div className="relative">
-                <label className="text-xs text-stone-400 uppercase font-bold mb-1 block">Main Destination</label>
+                <label className="text-xs text-stone-400 uppercase font-bold mb-1 block">{t('mainDestination')}</label>
                 <input
                   type="text"
                   value={destination}
                   onChange={(e) => { setDestination(e.target.value); setShowDestinationSuggestions(true); }}
                   onFocus={() => setShowDestinationSuggestions(true)}
                   onBlur={() => setTimeout(() => setShowDestinationSuggestions(false), 200)}
-                  placeholder="e.g., Thailand, Peru, Southeast Asia..."
+                  placeholder={t('destinationPlaceholder')}
                   className="w-full bg-stone-800 border border-stone-700 rounded-lg px-4 py-3 focus:outline-none focus:border-orange-500"
                 />
                 {showDestinationSuggestions && filteredDestinations.length > 0 && (
@@ -303,7 +308,7 @@ export default function TripSetupWizard({ isOpen, onClose, chatId }: TripSetupWi
 
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="text-xs text-stone-400 uppercase font-bold mb-1 block">Trip Duration (Days)</label>
+                  <label className="text-xs text-stone-400 uppercase font-bold mb-1 block">{t('tripDuration')}</label>
                   <input
                     type="number"
                     value={tripDuration}
@@ -312,7 +317,7 @@ export default function TripSetupWizard({ isOpen, onClose, chatId }: TripSetupWi
                   />
                 </div>
                 <div>
-                  <label className="text-xs text-stone-400 uppercase font-bold mb-1 block">Start Date</label>
+                  <label className="text-xs text-stone-400 uppercase font-bold mb-1 block">{t('startDate')}</label>
                   <input
                     type="date"
                     value={startDate}
@@ -323,7 +328,7 @@ export default function TripSetupWizard({ isOpen, onClose, chatId }: TripSetupWi
               </div>
 
               <div>
-                <label className="text-xs text-stone-400 uppercase font-bold mb-1 block">Daily Budget (USD)</label>
+                <label className="text-xs text-stone-400 uppercase font-bold mb-1 block">{t('dailyBudget')}</label>
                 <input
                   type="number"
                   value={dailyBudget}
@@ -334,7 +339,7 @@ export default function TripSetupWizard({ isOpen, onClose, chatId }: TripSetupWi
               </div>
 
               <div>
-                <label className="text-xs text-stone-400 uppercase font-bold mb-1 block">Preferred Language</label>
+                <label className="text-xs text-stone-400 uppercase font-bold mb-1 block">{t('preferredLanguage')}</label>
                 <select
                   value={preferredLanguage}
                   onChange={(e) => setPreferredLanguage(e.target.value)}
@@ -344,7 +349,7 @@ export default function TripSetupWizard({ isOpen, onClose, chatId }: TripSetupWi
                     <option key={lang} value={lang}>{lang}</option>
                   ))}
                 </select>
-                <p className="text-xs text-stone-500 mt-1">Will can respond in your preferred language</p>
+                <p className="text-xs text-stone-500 mt-1">{t('willCanRespond')}</p>
               </div>
             </div>
           </div>
@@ -354,8 +359,8 @@ export default function TripSetupWizard({ isOpen, onClose, chatId }: TripSetupWi
         return (
           <div className="space-y-6">
             <div className="text-center">
-              <h3 className="text-xl font-bold text-orange-500 mb-2">Build Your Itinerary</h3>
-              <p className="text-sm text-stone-400">Add stops to your trip (optional but helps with planning)</p>
+              <h3 className="text-xl font-bold text-orange-500 mb-2">{t('buildItinerary')}</h3>
+              <p className="text-sm text-stone-400">{t('addStops')}</p>
             </div>
 
             <div className="space-y-4">
@@ -364,7 +369,7 @@ export default function TripSetupWizard({ isOpen, onClose, chatId }: TripSetupWi
                   type="text"
                   value={newStop.location}
                   onChange={(e) => setNewStop({ ...newStop, location: e.target.value })}
-                  placeholder="Location (e.g., Bangkok, Chiang Mai)"
+                  placeholder={t('locationPlaceholder')}
                   className="w-full bg-stone-800 border border-stone-700 rounded px-3 py-2 text-sm focus:outline-none focus:border-orange-500"
                 />
                 <div className="flex gap-2">
@@ -380,12 +385,12 @@ export default function TripSetupWizard({ isOpen, onClose, chatId }: TripSetupWi
                     placeholder="Days"
                     className="w-16 bg-stone-800 border border-stone-700 rounded px-3 py-2 text-sm text-center focus:outline-none focus:border-orange-500"
                   />
-                  <span className="text-sm text-stone-400 self-center">days</span>
+                  <span className="text-sm text-stone-400 self-center">{t('days')}</span>
                   <input
                     type="text"
                     value={newStop.notes}
                     onChange={(e) => setNewStop({ ...newStop, notes: e.target.value })}
-                    placeholder="Notes (optional)"
+                    placeholder={t('notesOptional')}
                     className="flex-1 bg-stone-800 border border-stone-700 rounded px-3 py-2 text-sm focus:outline-none focus:border-orange-500"
                   />
                   <button
@@ -419,7 +424,7 @@ export default function TripSetupWizard({ isOpen, onClose, chatId }: TripSetupWi
                     </div>
                   ))}
                   <p className="text-xs text-stone-500 text-right">
-                    Total: {itinerary.reduce((sum, s) => sum + s.days, 0)} days
+                    {t('total')}: {itinerary.reduce((sum, s) => sum + s.days, 0)} {t('days')}
                   </p>
                 </div>
               )}
@@ -431,13 +436,13 @@ export default function TripSetupWizard({ isOpen, onClose, chatId }: TripSetupWi
         return (
           <div className="space-y-6">
             <div className="text-center">
-              <h3 className="text-xl font-bold text-orange-500 mb-2">How are you traveling?</h3>
-              <p className="text-sm text-stone-400">Your transport and accommodation preferences</p>
+              <h3 className="text-xl font-bold text-orange-500 mb-2">{t('howTraveling')}</h3>
+              <p className="text-sm text-stone-400">{t('transportAccommodation')}</p>
             </div>
 
             <div className="space-y-6">
               <div>
-                <label className="text-xs text-stone-400 uppercase font-bold mb-3 block">Transportation Style</label>
+                <label className="text-xs text-stone-400 uppercase font-bold mb-3 block">{t('transportationStyle')}</label>
                 <div className="grid grid-cols-3 gap-2">
                   {TRANSPORTATION_OPTIONS.map(opt => (
                     <ToggleChip
@@ -452,7 +457,7 @@ export default function TripSetupWizard({ isOpen, onClose, chatId }: TripSetupWi
               </div>
 
               <div>
-                <label className="text-xs text-stone-400 uppercase font-bold mb-3 block">Accommodation Style</label>
+                <label className="text-xs text-stone-400 uppercase font-bold mb-3 block">{t('accommodationStyle')}</label>
                 <div className="grid grid-cols-2 gap-2">
                   {ACCOMMODATION_OPTIONS.map(opt => (
                     <ToggleChip
@@ -467,15 +472,15 @@ export default function TripSetupWizard({ isOpen, onClose, chatId }: TripSetupWi
               </div>
 
               <div>
-                <label className="text-xs text-stone-400 uppercase font-bold mb-2 block">Deal Breakers</label>
-                <p className="text-xs text-stone-500 mb-2">Things you absolutely won't do</p>
+                <label className="text-xs text-stone-400 uppercase font-bold mb-2 block">{t('dealBreakers')}</label>
+                <p className="text-xs text-stone-500 mb-2">{t('dealBreakersDesc')}</p>
                 <div className="flex gap-2 mb-2">
                   <input
                     type="text"
                     value={newDealBreaker}
                     onChange={(e) => setNewDealBreaker(e.target.value)}
                     onKeyDown={(e) => e.key === 'Enter' && handleAddDealBreaker()}
-                    placeholder="e.g., overnight buses, shared bathrooms..."
+                    placeholder={t('dealBreakersPlaceholder')}
                     className="flex-1 bg-stone-800 border border-stone-700 rounded px-3 py-2 text-sm focus:outline-none focus:border-orange-500"
                   />
                   <button
@@ -505,8 +510,8 @@ export default function TripSetupWizard({ isOpen, onClose, chatId }: TripSetupWi
         return (
           <div className="space-y-6">
             <div className="text-center">
-              <h3 className="text-xl font-bold text-orange-500 mb-2">What's the mission?</h3>
-              <p className="text-sm text-stone-400">Select your trip goals (multiple allowed)</p>
+              <h3 className="text-xl font-bold text-orange-500 mb-2">{t('whatsTheMission')}</h3>
+              <p className="text-sm text-stone-400">{t('selectGoals')}</p>
             </div>
 
             <div className="grid grid-cols-2 gap-2">
@@ -522,14 +527,14 @@ export default function TripSetupWizard({ isOpen, onClose, chatId }: TripSetupWi
             </div>
 
             <div>
-              <label className="text-xs text-stone-400 uppercase font-bold mb-2 block">Custom Goals</label>
+              <label className="text-xs text-stone-400 uppercase font-bold mb-2 block">{t('customGoals')}</label>
               <div className="flex gap-2 mb-2">
                 <input
                   type="text"
                   value={newCustomGoal}
                   onChange={(e) => setNewCustomGoal(e.target.value)}
                   onKeyDown={(e) => e.key === 'Enter' && handleAddCustomGoal()}
-                  placeholder="Add your own goal..."
+                  placeholder={t('addYourGoal')}
                   className="flex-1 bg-stone-800 border border-stone-700 rounded px-3 py-2 text-sm focus:outline-none focus:border-orange-500"
                 />
                 <button
@@ -558,14 +563,14 @@ export default function TripSetupWizard({ isOpen, onClose, chatId }: TripSetupWi
         return (
           <div className="space-y-6">
             <div className="text-center">
-              <h3 className="text-xl font-bold text-orange-500 mb-2">Trip-Specific Overrides</h3>
-              <p className="text-sm text-stone-400">Override your profile settings for this trip</p>
+              <h3 className="text-xl font-bold text-orange-500 mb-2">{t('tripOverrides')}</h3>
+              <p className="text-sm text-stone-400">{t('overrideProfile')}</p>
             </div>
 
             <div className="space-y-4">
               <div className="bg-stone-800/50 rounded-lg p-4 space-y-3">
-                <h4 className="text-sm font-bold flex items-center gap-2"><Shield size={14} className="text-orange-500" /> Safety Overrides</h4>
-                <p className="text-xs text-stone-500">Leave unchecked to use your profile defaults</p>
+                <h4 className="text-sm font-bold flex items-center gap-2"><Shield size={14} className="text-orange-500" /> {t('safetyOverrides')}</h4>
+                <p className="text-xs text-stone-500">{t('useProfileDefaults')}</p>
 
                 <label className="flex items-center gap-3 cursor-pointer">
                   <input
@@ -574,7 +579,7 @@ export default function TripSetupWizard({ isOpen, onClose, chatId }: TripSetupWi
                     onChange={(e) => setWalkAtNightOverride(e.target.checked ? true : undefined)}
                     className="w-4 h-4 accent-orange-500"
                   />
-                  <span className="text-sm">Override: Comfortable walking at night</span>
+                  <span className="text-sm">{t('overrideNightWalking')}</span>
                 </label>
 
                 <label className="flex items-center gap-3 cursor-pointer">
@@ -584,7 +589,7 @@ export default function TripSetupWizard({ isOpen, onClose, chatId }: TripSetupWi
                     onChange={(e) => setExperiencedMotosOverride(e.target.checked ? true : undefined)}
                     className="w-4 h-4 accent-orange-500"
                   />
-                  <span className="text-sm">Override: OK with motorbikes for this trip</span>
+                  <span className="text-sm">{t('overrideMotorbikes')}</span>
                 </label>
 
                 <label className="flex items-center gap-3 cursor-pointer">
@@ -594,12 +599,12 @@ export default function TripSetupWizard({ isOpen, onClose, chatId }: TripSetupWi
                     onChange={(e) => setOpenToCouchsurfingOverride(e.target.checked ? true : undefined)}
                     className="w-4 h-4 accent-orange-500"
                   />
-                  <span className="text-sm">Override: Open to Couchsurfing for this trip</span>
+                  <span className="text-sm">{t('overrideCouchsurfing')}</span>
                 </label>
               </div>
 
               <div className="bg-stone-800/50 rounded-lg p-4 space-y-3">
-                <h4 className="text-sm font-bold flex items-center gap-2"><Camera size={14} className="text-orange-500" /> Content Overrides</h4>
+                <h4 className="text-sm font-bold flex items-center gap-2"><Camera size={14} className="text-orange-500" /> {t('contentOverrides')}</h4>
 
                 <label className="flex items-center gap-3 cursor-pointer">
                   <input
@@ -608,7 +613,7 @@ export default function TripSetupWizard({ isOpen, onClose, chatId }: TripSetupWi
                     onChange={(e) => setInstagramFriendlyOverride(e.target.checked ? true : undefined)}
                     className="w-4 h-4 accent-orange-500"
                   />
-                  <span className="text-sm">Prioritize Instagram-worthy spots</span>
+                  <span className="text-sm">{tProfile('prioritizeInstagram')}</span>
                 </label>
 
                 <label className="flex items-center gap-3 cursor-pointer">
@@ -618,7 +623,7 @@ export default function TripSetupWizard({ isOpen, onClose, chatId }: TripSetupWi
                     onChange={(e) => setHiddenSpotsOverride(e.target.checked ? true : undefined)}
                     className="w-4 h-4 accent-orange-500"
                   />
-                  <span className="text-sm">Focus on hidden gems</span>
+                  <span className="text-sm">{tProfile('showHiddenGems')}</span>
                 </label>
 
                 <label className="flex items-center gap-3 cursor-pointer">
@@ -628,12 +633,12 @@ export default function TripSetupWizard({ isOpen, onClose, chatId }: TripSetupWi
                     onChange={(e) => setVideoFocusOverride(e.target.checked ? true : undefined)}
                     className="w-4 h-4 accent-orange-500"
                   />
-                  <span className="text-sm">Optimize for video content</span>
+                  <span className="text-sm">{tProfile('focusVideo')}</span>
                 </label>
               </div>
 
               <div className="bg-stone-800/50 rounded-lg p-4 space-y-3">
-                <h4 className="text-sm font-bold flex items-center gap-2"><MapPin size={14} className="text-orange-500" /> Visa Info</h4>
+                <h4 className="text-sm font-bold flex items-center gap-2"><MapPin size={14} className="text-orange-500" /> {t('visaInfo')}</h4>
 
                 <label className="flex items-center gap-3 cursor-pointer">
                   <input
@@ -642,7 +647,7 @@ export default function TripSetupWizard({ isOpen, onClose, chatId }: TripSetupWi
                     onChange={(e) => setNeedsVisa(e.target.checked)}
                     className="w-4 h-4 accent-orange-500"
                   />
-                  <span className="text-sm">Needs visa for this destination</span>
+                  <span className="text-sm">{t('needsVisa')}</span>
                 </label>
 
                 {needsVisa && (
@@ -654,14 +659,14 @@ export default function TripSetupWizard({ isOpen, onClose, chatId }: TripSetupWi
                         onChange={(e) => setVisaOnArrival(e.target.checked)}
                         className="w-4 h-4 accent-orange-500"
                       />
-                      <span className="text-sm">Visa on arrival available</span>
+                      <span className="text-sm">{t('visaOnArrival')}</span>
                     </label>
 
                     <input
                       type="text"
                       value={visaNotes}
                       onChange={(e) => setVisaNotes(e.target.value)}
-                      placeholder="Visa notes (e.g., 30 days free, need extension)"
+                      placeholder={t('visaNotesPlaceholder')}
                       className="w-full bg-stone-800 border border-stone-700 rounded px-3 py-2 text-sm focus:outline-none focus:border-orange-500"
                     />
                   </>
@@ -698,7 +703,7 @@ export default function TripSetupWizard({ isOpen, onClose, chatId }: TripSetupWi
             <div className="flex items-center justify-between p-4 border-b border-stone-800">
               <div className="flex items-center gap-2">
                 <Compass className="text-orange-500" size={20} />
-                <h2 className="font-bold">Trip Setup</h2>
+                <h2 className="font-bold">{t('title')}</h2>
               </div>
               <button onClick={onClose} className="p-2 hover:bg-stone-800 rounded-lg transition-colors">
                 <X size={20} />
@@ -722,7 +727,7 @@ export default function TripSetupWizard({ isOpen, onClose, chatId }: TripSetupWi
                   step === 0 ? "opacity-50 cursor-not-allowed" : "hover:bg-stone-800"
                 )}
               >
-                <ChevronLeft size={16} /> Back
+                <ChevronLeft size={16} /> {tCommon('back')}
               </button>
 
               <button
@@ -732,11 +737,11 @@ export default function TripSetupWizard({ isOpen, onClose, chatId }: TripSetupWi
               >
                 {step === totalSteps - 1 ? (
                   <>
-                    <Check size={16} /> Save Trip
+                    <Check size={16} /> {t('saveTrip')}
                   </>
                 ) : (
                   <>
-                    Next <ChevronRight size={16} />
+                    {tCommon('next')} <ChevronRight size={16} />
                   </>
                 )}
               </button>

@@ -5,6 +5,7 @@ import Map, { Marker, Popup, NavigationControl } from 'react-map-gl';
 import { MapPin, Bed, UtensilsCrossed, Mountain, Landmark, Bus, X, Trash2, Map as MapIcon, List } from 'lucide-react';
 import clsx from 'clsx';
 import { useChats, MapPin as MapPinType, MapPinType as PinType } from '../context/ChatsContext';
+import { useTranslations } from '../context/LocaleContext';
 import 'mapbox-gl/dist/mapbox-gl.css';
 
 interface MapPanelProps {
@@ -72,6 +73,7 @@ function PinMarker({ pin, onClick, isSelected }: { pin: MapPinType; onClick: () 
 
 export default function MapPanel({ isExpanded, onToggle }: MapPanelProps) {
   const { activeChat, removeMapPin, updateMapView } = useChats();
+  const t = useTranslations('map');
   const [selectedPin, setSelectedPin] = useState<MapPinType | null>(null);
   const [viewState, setViewState] = useState({
     longitude: 100.5018, // Default: Bangkok
@@ -125,10 +127,10 @@ export default function MapPanel({ isExpanded, onToggle }: MapPanelProps) {
       <div className="flex items-center justify-between px-3 py-2 border-b border-stone-700 bg-stone-800">
         <div className="flex items-center gap-2">
           <MapIcon size={16} className="text-orange-500" />
-          <span className="text-sm font-medium">Trip Map</span>
+          <span className="text-sm font-medium">{t('title')}</span>
           {pins.length > 0 && (
             <span className="bg-orange-600 text-white text-xs px-1.5 py-0.5 rounded-full">
-              {pins.length} {pins.length === 1 ? 'pin' : 'pins'}
+              {pins.length}
             </span>
           )}
         </div>
@@ -202,7 +204,7 @@ export default function MapPanel({ isExpanded, onToggle }: MapPanelProps) {
               ))}
               {pins.length === 0 && (
                 <div className="p-4 text-center text-stone-500 text-sm">
-                  No locations saved yet
+                  {t('noLocations')}
                 </div>
               )}
             </div>
@@ -284,7 +286,7 @@ export default function MapPanel({ isExpanded, onToggle }: MapPanelProps) {
                     className="flex items-center gap-1.5 text-xs text-red-400 hover:text-red-300 transition-colors px-2 py-1 rounded hover:bg-red-500/10"
                   >
                     <Trash2 size={12} />
-                    Remove from map
+                    {t('removePin')}
                   </button>
                 </div>
               </Popup>
@@ -296,9 +298,9 @@ export default function MapPanel({ isExpanded, onToggle }: MapPanelProps) {
             <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
               <div className="bg-stone-900/90 rounded-xl p-6 text-center max-w-xs">
                 <MapPin size={40} className="mx-auto mb-3 text-orange-500/50" />
-                <p className="text-sm text-stone-300 font-medium">No locations yet</p>
+                <p className="text-sm text-stone-300 font-medium">{t('noLocations')}</p>
                 <p className="text-xs text-stone-500 mt-2 leading-relaxed">
-                  Ask Will for recommendations and click "Add to Map" to start building your trip map
+                  {t('addFromChat')}
                 </p>
               </div>
             </div>

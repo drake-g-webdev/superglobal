@@ -9,6 +9,7 @@ import {
 import clsx from 'clsx';
 import { useChats, PackingItem } from '../context/ChatsContext';
 import { useProfile } from '../context/ProfileContext';
+import { useTranslations } from '../context/LocaleContext';
 
 type PackingCategory = PackingItem['category'];
 
@@ -35,6 +36,7 @@ const CATEGORY_ORDER: PackingCategory[] = [
 export default function PackingListPanel() {
   const { activeChat, setPackingList, togglePackingItem, updatePackingItem, clearPackingList } = useChats();
   const { profile, isProfileSet } = useProfile();
+  const t = useTranslations('packingList');
   const [isGenerating, setIsGenerating] = useState(false);
   const [expandedCategories, setExpandedCategories] = useState<Set<PackingCategory>>(new Set(CATEGORY_ORDER));
   const [error, setError] = useState<string | null>(null);
@@ -120,7 +122,7 @@ export default function PackingListPanel() {
         <div className="flex items-center justify-between mb-2">
           <div className="flex items-center gap-2">
             <Backpack size={18} className="text-orange-500" />
-            <span className="font-medium">Packing List</span>
+            <span className="font-medium">{t('title')}</span>
           </div>
           {totalCount > 0 && (
             <div className="flex items-center gap-2">

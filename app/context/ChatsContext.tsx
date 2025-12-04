@@ -342,6 +342,7 @@ interface ChatsContextType {
   clearPackingList: (chatId: string) => void;
   // Events functions
   setEvents: (chatId: string, events: Omit<TripEvent, 'id' | 'isInterested' | 'createdAt'>[], travelAdvisory: string) => void;
+  addEvents: (chatId: string, events: Omit<TripEvent, 'id' | 'isInterested' | 'createdAt'>[], travelAdvisory?: string) => void;
   toggleEventInterest: (chatId: string, eventId: string) => void;
   clearEvents: (chatId: string) => void;
   // Conversation variables functions
@@ -390,7 +391,7 @@ function createNewChat(title?: string): Chat {
     destination: 'General',
     budget: 'Broke Backpacker',
     messages: [
-      { role: 'assistant', content: "Oi! Will here. Where are we heading today, mate? Tell me about your trip and I'll help you plan something epic!" }
+      { role: 'assistant', content: "Hey! Sierra here. Where are we heading today? Tell me about your trip and I'll help you plan something epic!" }
     ],
     createdAt: now,
     updatedAt: now,
@@ -914,6 +915,36 @@ export function ChatsProvider({ children }: { children: ReactNode }) {
     ));
   };
 
+  const addEvents = (chatId: string, events: Omit<TripEvent, 'id' | 'isInterested' | 'createdAt'>[], travelAdvisory?: string) => {
+    const now = Date.now();
+    setChats(prev => prev.map(chat => {
+      if (chat.id !== chatId) return chat;
+
+      const existingEvents = chat.eventsData?.events || [];
+      const existingNames = new Set(existingEvents.map(e => e.name.toLowerCase()));
+
+      // Filter out duplicates by name and add only new events
+      const newEvents: TripEvent[] = events
+        .filter(event => !existingNames.has(event.name.toLowerCase()))
+        .map(event => ({
+          ...event,
+          id: generateEventId(),
+          isInterested: false,
+          createdAt: now,
+        }));
+
+      return {
+        ...chat,
+        eventsData: {
+          events: [...existingEvents, ...newEvents],
+          travelAdvisory: travelAdvisory || chat.eventsData?.travelAdvisory || '',
+          lastFetched: now,
+        },
+        updatedAt: now,
+      };
+    }));
+  };
+
   const toggleEventInterest = (chatId: string, eventId: string) => {
     setChats(prev => prev.map(chat =>
       chat.id === chatId
@@ -1045,6 +1076,7 @@ export function ChatsProvider({ children }: { children: ReactNode }) {
       togglePackingItem,
       clearPackingList,
       setEvents,
+      addEvents,
       toggleEventInterest,
       clearEvents,
       updateConversationVariables,

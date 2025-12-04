@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 import clsx from 'clsx';
 import { useChats, CostCategory, CostItem, TouristTrap } from '../context/ChatsContext';
+import { useTranslations } from '../context/LocaleContext';
 
 const CATEGORY_CONFIG: Record<CostCategory, { label: string; icon: React.ComponentType<{ size?: number; className?: string }>; color: string }> = {
   accommodation: { label: 'Accommodation', icon: Bed, color: '#f97316' },
@@ -53,6 +54,7 @@ const defaultFormState: AddCostFormState = {
 
 export default function CostDashboard() {
   const { activeChat, addCostItem, updateCostItem, removeCostItem, clearCostItems, removeTouristTrap } = useChats();
+  const t = useTranslations('costs');
   const [isAddingCost, setIsAddingCost] = useState(false);
   const [editingItemId, setEditingItemId] = useState<string | null>(null);
   const [formState, setFormState] = useState<AddCostFormState>(defaultFormState);
@@ -172,7 +174,7 @@ export default function CostDashboard() {
         <div className="flex items-center justify-between mb-2">
           <div className="flex items-center gap-2">
             <Calculator size={18} className="text-orange-500" />
-            <span className="font-medium">Trip Budget</span>
+            <span className="font-medium">{t('title')}</span>
           </div>
           <button
             onClick={() => activeChat && clearCostItems(activeChat.id)}
@@ -187,12 +189,12 @@ export default function CostDashboard() {
         <div className="bg-gradient-to-r from-orange-600/20 to-orange-500/10 rounded-lg p-3 border border-orange-500/30">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-xs text-stone-400">Estimated Total</p>
+              <p className="text-xs text-stone-400">{t('totalSpent')}</p>
               <p className="text-2xl font-bold text-white">${grandTotal.toFixed(0)}</p>
             </div>
             <div className="text-right">
-              <p className="text-xs text-stone-400">{tripDays} days</p>
-              <p className="text-lg font-semibold text-orange-400">${dailyAverage.toFixed(0)}/day</p>
+              <p className="text-xs text-stone-400">{tripDays} {t('category') === 'Categoría' ? 'días' : 'days'}</p>
+              <p className="text-lg font-semibold text-orange-400">${dailyAverage.toFixed(0)}/{t('dailyAverage').split(' ')[0].toLowerCase()}</p>
             </div>
           </div>
 
@@ -225,7 +227,7 @@ export default function CostDashboard() {
             className="w-full px-4 py-3 flex items-center gap-2 text-orange-400 hover:bg-stone-800 transition-colors border-b border-stone-800"
           >
             <Plus size={16} />
-            <span className="text-sm">Add cost item</span>
+            <span className="text-sm">{t('addExpense')}</span>
           </button>
         )}
 
@@ -235,7 +237,7 @@ export default function CostDashboard() {
             <div className="space-y-3">
               {/* Category Select */}
               <div>
-                <label className="block text-xs text-stone-400 mb-1">Category</label>
+                <label className="block text-xs text-stone-400 mb-1">{t('category')}</label>
                 <select
                   value={formState.category}
                   onChange={e => setFormState(s => ({ ...s, category: e.target.value as CostCategory }))}
@@ -262,7 +264,7 @@ export default function CostDashboard() {
               {/* Amount & Quantity */}
               <div className="grid grid-cols-3 gap-2">
                 <div>
-                  <label className="block text-xs text-stone-400 mb-1">Amount ($)</label>
+                  <label className="block text-xs text-stone-400 mb-1">{t('amount')} ($)</label>
                   <input
                     type="number"
                     value={formState.amount}
@@ -301,7 +303,7 @@ export default function CostDashboard() {
 
               {/* Notes */}
               <div>
-                <label className="block text-xs text-stone-400 mb-1">Notes (optional)</label>
+                <label className="block text-xs text-stone-400 mb-1">{t('description')}</label>
                 <input
                   type="text"
                   value={formState.notes}
@@ -443,7 +445,7 @@ export default function CostDashboard() {
             <DollarSign size={40} className="mx-auto mb-3 text-stone-600" />
             <p className="text-sm text-stone-400 mb-1">No costs tracked yet</p>
             <p className="text-xs text-stone-500">
-              Ask Will about costs or add them manually above
+              Ask Sierra about costs or add them manually above
             </p>
           </div>
         )}

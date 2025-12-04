@@ -1,8 +1,9 @@
 "use client";
 
 import { useState, useRef, useEffect } from 'react';
-import { X, User, MapPin, Heart, AlertCircle, Compass, Plus, ChevronDown, ChevronRight, Backpack, DollarSign, Shield, Camera, Utensils, Gauge } from 'lucide-react';
+import { X, User, MapPin, Heart, AlertCircle, Compass, Plus, ChevronDown, ChevronRight, Backpack, DollarSign, Shield, Camera, Utensils, Gauge, Info } from 'lucide-react';
 import { useProfile, UserProfile, ActivityWeighting } from '../context/ProfileContext';
+import { useTranslations } from '../context/LocaleContext';
 import { motion, AnimatePresence } from 'framer-motion';
 import clsx from 'clsx';
 
@@ -160,6 +161,86 @@ function Slider({ value, onChange, label, min = 0, max = 100 }: {
   );
 }
 
+// Tooltip Component - Uses fixed positioning with boundary detection
+function Tooltip({ content, children }: { content: string; children: React.ReactNode }) {
+  const [show, setShow] = useState(false);
+  const [position, setPosition] = useState({ top: 0, left: 0, arrowOffset: 0 });
+  const triggerRef = useRef<HTMLDivElement>(null);
+  const tooltipWidth = 256; // w-64 = 16rem = 256px
+  const padding = 12; // Padding from screen edge
+
+  const updatePosition = () => {
+    if (triggerRef.current) {
+      const rect = triggerRef.current.getBoundingClientRect();
+      const screenWidth = window.innerWidth;
+
+      // Calculate ideal center position
+      let left = rect.left + rect.width / 2;
+      let arrowOffset = 0;
+
+      // Check if tooltip would go off the right edge
+      const rightEdge = left + tooltipWidth / 2;
+      if (rightEdge > screenWidth - padding) {
+        const overflow = rightEdge - (screenWidth - padding);
+        left = left - overflow;
+        arrowOffset = overflow; // Move arrow to compensate
+      }
+
+      // Check if tooltip would go off the left edge
+      const leftEdge = left - tooltipWidth / 2;
+      if (leftEdge < padding) {
+        const overflow = padding - leftEdge;
+        left = left + overflow;
+        arrowOffset = -overflow; // Move arrow to compensate
+      }
+
+      setPosition({
+        top: rect.top - 8,
+        left: left,
+        arrowOffset: arrowOffset,
+      });
+    }
+  };
+
+  const handleMouseEnter = () => {
+    updatePosition();
+    setShow(true);
+  };
+
+  return (
+    <>
+      <div className="relative inline-block" ref={triggerRef}>
+        <div
+          onMouseEnter={handleMouseEnter}
+          onMouseLeave={() => setShow(false)}
+          onClick={() => { updatePosition(); setShow(!show); }}
+        >
+          {children}
+        </div>
+      </div>
+      {show && typeof document !== 'undefined' && (
+        <div
+          className="fixed z-[9999] px-3 py-2 bg-stone-900 border border-stone-600 rounded-lg text-xs text-stone-300 w-64 shadow-lg pointer-events-none"
+          style={{
+            top: position.top,
+            left: position.left,
+            transform: 'translate(-50%, -100%)',
+          }}
+        >
+          {content}
+          <div
+            className="absolute top-full border-4 border-transparent border-t-stone-600"
+            style={{
+              left: `calc(50% + ${position.arrowOffset}px)`,
+              transform: 'translateX(-50%)',
+            }}
+          />
+        </div>
+      )}
+    </>
+  );
+}
+
 // Autocomplete Input Component
 function AutocompleteInput({ value, onChange, onSelect, suggestions, placeholder, existingTags }: {
   value: string;
@@ -235,6 +316,8 @@ function AutocompleteInput({ value, onChange, onSelect, suggestions, placeholder
 
 export default function ProfilePanel({ isOpen, onClose }: ProfilePanelProps) {
   const { profile, updateProfile } = useProfile();
+  const t = useTranslations('profile');
+  const tAuth = useTranslations('auth');
 
   // Local state for text inputs
   const [localName, setLocalName] = useState(profile.name || '');
@@ -315,7 +398,7 @@ export default function ProfilePanel({ isOpen, onClose }: ProfilePanelProps) {
             className="fixed right-0 top-0 h-full w-full max-w-lg bg-stone-900 border-l border-stone-700 z-50 overflow-y-auto"
           >
             <div className="flex items-center justify-between p-4 border-b border-stone-800 sticky top-0 bg-stone-900 z-10">
-              <h2 className="text-lg font-bold text-orange-500">Traveler Profile</h2>
+              <h2 className="text-lg font-bold text-orange-500">{t('title')}</h2>
               <button onClick={onClose} className="p-2 hover:bg-stone-800 rounded-lg transition-colors">
                 <X size={20} />
               </button>
@@ -323,29 +406,29 @@ export default function ProfilePanel({ isOpen, onClose }: ProfilePanelProps) {
 
             <div className="p-4 space-y-4">
               {/* BASIC INFO */}
-              <Section title="Basic Info" icon={User} defaultOpen={true}>
+              <Section title={t('basicInfo')} icon={User} defaultOpen={true}>
                 <div className="space-y-3">
                   <div>
-                    <label className="text-xs text-stone-400 uppercase font-bold">Your Name</label>
+                    <label className="text-xs text-stone-400 uppercase font-bold">{t('yourName')}</label>
                     <input
                       type="text"
                       value={localName}
                       onChange={(e) => setLocalName(e.target.value)}
                       onBlur={() => handleTextBlur('name', localName)}
-                      placeholder="What should Will call you?"
+                      placeholder={t('namePlaceholder')}
                       className="w-full bg-stone-800 border border-stone-700 rounded px-3 py-2 text-sm mt-1 focus:outline-none focus:border-orange-500"
                     />
                   </div>
 
                   <div className="relative">
-                    <label className="text-xs text-stone-400 uppercase font-bold">Country of Origin</label>
+                    <label className="text-xs text-stone-400 uppercase font-bold">{t('countryOfOrigin')}</label>
                     <input
                       type="text"
                       value={localOrigin}
                       onChange={(e) => { setLocalOrigin(e.target.value); setShowOriginSuggestions(true); }}
                       onFocus={() => setShowOriginSuggestions(true)}
                       onBlur={() => { setTimeout(() => setShowOriginSuggestions(false), 200); handleTextBlur('countryOfOrigin', localOrigin); }}
-                      placeholder="Where are you from?"
+                      placeholder={t('originPlaceholder')}
                       className="w-full bg-stone-800 border border-stone-700 rounded px-3 py-2 text-sm mt-1 focus:outline-none focus:border-orange-500"
                     />
                     {showOriginSuggestions && filteredOriginSuggestions.length > 0 && (
@@ -362,14 +445,14 @@ export default function ProfilePanel({ isOpen, onClose }: ProfilePanelProps) {
                   </div>
 
                   <div className="relative">
-                    <label className="text-xs text-stone-400 uppercase font-bold">Passport Country</label>
+                    <label className="text-xs text-stone-400 uppercase font-bold">{t('passportCountry')}</label>
                     <input
                       type="text"
                       value={localPassport}
                       onChange={(e) => { setLocalPassport(e.target.value); setShowPassportSuggestions(true); }}
                       onFocus={() => setShowPassportSuggestions(true)}
                       onBlur={() => { setTimeout(() => setShowPassportSuggestions(false), 200); handleTextBlur('passportCountry', localPassport); }}
-                      placeholder="For visa requirements"
+                      placeholder={t('passportPlaceholder')}
                       className="w-full bg-stone-800 border border-stone-700 rounded px-3 py-2 text-sm mt-1 focus:outline-none focus:border-orange-500"
                     />
                     {showPassportSuggestions && filteredPassportSuggestions.length > 0 && (
@@ -386,279 +469,59 @@ export default function ProfilePanel({ isOpen, onClose }: ProfilePanelProps) {
                   </div>
 
                   <div>
-                    <label className="text-xs text-stone-400 uppercase font-bold">Travel Style</label>
+                    <label className="text-xs text-stone-400 uppercase font-bold">{t('travelStyle')}</label>
                     <EnumSelector
                       value={profile.travelStyle}
                       onChange={(v) => updateProfile({ travelStyle: v })}
                       options={['solo', 'couple', 'group', 'family']}
+                      labels={{ solo: t('solo'), couple: t('couple'), group: t('group'), family: t('family') }}
                     />
                   </div>
                 </div>
               </Section>
 
               {/* TRAVEL PREFERENCES */}
-              <Section title="Travel Preferences" icon={Compass}>
+              <Section title={t('travelPreferences')} icon={Compass}>
                 <div className="space-y-4">
                   <div>
-                    <label className="text-xs text-stone-400 uppercase font-bold mb-2 block">Risk Tolerance</label>
+                    <label className="text-xs text-stone-400 uppercase font-bold mb-2 block">{t('riskTolerance')}</label>
                     <EnumSelector
                       value={profile.riskTolerance || 'medium'}
                       onChange={(v) => updateProfile({ riskTolerance: v })}
                       options={['low', 'medium', 'high']}
-                      labels={{ low: '🛡️ Play it Safe', medium: '⚖️ Balanced', high: '🔥 Send It' }}
+                      labels={{ low: `🛡️ ${t('playItSafe')}`, medium: `⚖️ ${t('balanced')}`, high: `🔥 ${t('sendIt')}` }}
                     />
                   </div>
 
                   <div>
-                    <label className="text-xs text-stone-400 uppercase font-bold mb-2 block">Comfort Threshold</label>
+                    <label className="text-xs text-stone-400 uppercase font-bold mb-2 block">{t('comfortThreshold')}</label>
                     <EnumSelector
                       value={profile.comfortThreshold || 'hostels'}
                       onChange={(v) => updateProfile({ comfortThreshold: v })}
-                      options={['hostels', 'tents', 'hammocks', 'van', 'couchsurfing']}
+                      options={['hotels', 'hostels', 'tents', 'van', 'couchsurfing']}
+                      labels={{ hotels: t('hotels'), hostels: t('hostels'), tents: t('tents'), van: t('van'), couchsurfing: t('couchsurfing') }}
                     />
                   </div>
 
                   <div>
-                    <label className="text-xs text-stone-400 uppercase font-bold mb-2 block">Hygiene Threshold</label>
-                    <EnumSelector
-                      value={profile.hygieneThreshold || 'every_3_days'}
-                      onChange={(v) => updateProfile({ hygieneThreshold: v })}
-                      options={['daily', 'every_3_days', 'broke_backpacker_mode']}
-                      labels={{ daily: '🧼 Daily', every_3_days: '🚿 Every 3 Days', broke_backpacker_mode: '🦨 True Backpacker' }}
-                    />
-                  </div>
-
-                  <div>
-                    <label className="text-xs text-stone-400 uppercase font-bold mb-2 block">Travel Pace</label>
+                    <label className="text-xs text-stone-400 uppercase font-bold mb-2 block">{t('travelPace')}</label>
                     <EnumSelector
                       value={profile.travelPace || 'moderate'}
                       onChange={(v) => updateProfile({ travelPace: v })}
                       options={['slow', 'moderate', 'fast']}
-                      labels={{ slow: '🐢 Slow & Deep', moderate: '🚶 Moderate', fast: '🏃 Fast & Wide' }}
-                    />
-                  </div>
-                </div>
-              </Section>
-
-              {/* ACTIVITY WEIGHTING */}
-              <Section title="Activity Preferences" icon={Gauge}>
-                <div className="space-y-3">
-                  <p className="text-xs text-stone-500">Adjust sliders to weight your interests</p>
-                  <Slider label="🎉 Party / Nightlife" value={profile.activityWeighting?.party || 20} onChange={(v) => handleActivityChange('party', v)} />
-                  <Slider label="🌿 Nature / Outdoors" value={profile.activityWeighting?.nature || 30} onChange={(v) => handleActivityChange('nature', v)} />
-                  <Slider label="🏛️ Culture / History" value={profile.activityWeighting?.culture || 25} onChange={(v) => handleActivityChange('culture', v)} />
-                  <Slider label="🧗 Adventure / Adrenaline" value={profile.activityWeighting?.adventure || 15} onChange={(v) => handleActivityChange('adventure', v)} />
-                  <Slider label="🏖️ Relaxation / Beach" value={profile.activityWeighting?.relaxation || 10} onChange={(v) => handleActivityChange('relaxation', v)} />
-                </div>
-              </Section>
-
-              {/* FOOD & GEAR */}
-              <Section title="Food & Gear" icon={Utensils}>
-                <div className="space-y-4">
-                  <div>
-                    <label className="text-xs text-stone-400 uppercase font-bold mb-2 block">Food Preference</label>
-                    <EnumSelector
-                      value={profile.foodPreference || 'street_food'}
-                      onChange={(v) => updateProfile({ foodPreference: v })}
-                      options={['street_food', 'restaurants', 'cooking', 'mixed']}
-                      labels={{ street_food: '🍜 Street Food', restaurants: '🍽️ Restaurants', cooking: '🍳 Self Cooking', mixed: '🔀 Mixed' }}
+                      labels={{ slow: `🐢 ${t('slow')}`, moderate: `🚶 ${t('moderate')}`, fast: `🏃 ${t('fast')}` }}
                     />
                   </div>
 
                   <div>
-                    <label className="text-xs text-stone-400 uppercase font-bold mb-2 block">Pack Weight</label>
-                    <EnumSelector
-                      value={profile.packWeight || 'moderate'}
-                      onChange={(v) => updateProfile({ packWeight: v })}
-                      options={['minimalist', 'moderate', 'maximalist']}
-                      labels={{ minimalist: '🎒 <7kg Minimalist', moderate: '🧳 7-12kg Moderate', maximalist: '💼 12kg+ Full Kit' }}
-                    />
-                  </div>
-
-                  <div>
-                    <label className="text-xs text-stone-400 uppercase font-bold mb-2 block">Electronics Needs</label>
-                    <EnumSelector
-                      value={profile.electronicsTolerance || 'medium'}
-                      onChange={(v) => updateProfile({ electronicsTolerance: v })}
-                      options={['low', 'medium', 'high']}
-                      labels={{ low: '📵 Minimal', medium: '📱 Phone + Laptop', high: '🎬 Full Creator Kit' }}
-                    />
-                  </div>
-                </div>
-              </Section>
-
-              {/* BUDGET */}
-              <Section title="Budget & Income" icon={DollarSign}>
-                <div className="space-y-4">
-                  <div>
-                    <label className="text-xs text-stone-400 uppercase font-bold mb-2 block">Budget Style</label>
-                    <EnumSelector
-                      value={profile.budgetPreference}
-                      onChange={(v) => updateProfile({ budgetPreference: v })}
-                      options={['broke-backpacker', 'flashpacker', 'digital-nomad']}
-                      labels={{ 'broke-backpacker': '💸 Broke Backpacker', flashpacker: '💳 Flashpacker', 'digital-nomad': '💻 Digital Nomad' }}
-                    />
-                  </div>
-
-                  <div>
-                    <label className="text-xs text-stone-400 uppercase font-bold mb-2 block">Income Type</label>
-                    <EnumSelector
-                      value={profile.incomeType || 'savings_only'}
-                      onChange={(v) => updateProfile({ incomeType: v })}
-                      options={['remote_worker', 'seasonal_worker', 'savings_only', 'passive_income']}
-                      labels={{ remote_worker: '💻 Remote Work', seasonal_worker: '🌾 Seasonal', savings_only: '🏦 Savings', passive_income: '📈 Passive' }}
-                    />
-                  </div>
-
-                  <div>
-                    <label className="text-xs text-stone-400 uppercase font-bold">Monthly Budget (USD)</label>
-                    <input
-                      type="number"
-                      value={localBudget}
-                      onChange={(e) => setLocalBudget(e.target.value)}
-                      onBlur={handleBudgetBlur}
-                      className="w-full bg-stone-800 border border-stone-700 rounded px-3 py-2 text-sm mt-1 focus:outline-none focus:border-orange-500"
-                    />
-                  </div>
-                </div>
-              </Section>
-
-              {/* SAFETY */}
-              <Section title="Safety Preferences" icon={Shield}>
-                <div className="space-y-3">
-                  <ToggleButton
-                    value={profile.walkAtNight ?? true}
-                    onChange={(v) => updateProfile({ walkAtNight: v })}
-                    label="Comfortable walking at night"
-                  />
-                  <ToggleButton
-                    value={profile.experiencedMotos ?? false}
-                    onChange={(v) => updateProfile({ experiencedMotos: v })}
-                    label="Experienced with motorbikes"
-                  />
-                  <ToggleButton
-                    value={profile.openToCouchsurfing ?? false}
-                    onChange={(v) => updateProfile({ openToCouchsurfing: v })}
-                    label="Open to Couchsurfing"
-                  />
-                  <ToggleButton
-                    value={profile.femaleTravelerConcerns ?? false}
-                    onChange={(v) => updateProfile({ femaleTravelerConcerns: v })}
-                    label="Female traveler safety concerns"
-                  />
-                </div>
-              </Section>
-
-              {/* CONTENT CREATION */}
-              <Section title="Content Creation" icon={Camera}>
-                <div className="space-y-3">
-                  <ToggleButton
-                    value={profile.instagramFriendly ?? false}
-                    onChange={(v) => updateProfile({ instagramFriendly: v })}
-                    label="Prioritize Instagram-worthy spots"
-                  />
-                  <ToggleButton
-                    value={profile.hiddenSpots ?? true}
-                    onChange={(v) => updateProfile({ hiddenSpots: v })}
-                    label="Show me hidden gems over tourist spots"
-                  />
-                  <ToggleButton
-                    value={profile.videoFocus ?? false}
-                    onChange={(v) => updateProfile({ videoFocus: v })}
-                    label="Focus on video content locations"
-                  />
-                  <ToggleButton
-                    value={profile.sunriseSunsetOptimization ?? false}
-                    onChange={(v) => updateProfile({ sunriseSunsetOptimization: v })}
-                    label="Optimize for golden hour timing"
-                  />
-                </div>
-              </Section>
-
-              {/* TRAVEL HISTORY */}
-              <Section title="Travel History & Dreams" icon={MapPin}>
-                <div className="space-y-4">
-                  <div>
-                    <label className="text-xs text-stone-400 uppercase font-bold mb-2 block">Countries Visited</label>
-                    <div className="flex gap-2 mb-2">
-                      <AutocompleteInput
-                        value={countryInput}
-                        onChange={setCountryInput}
-                        onSelect={(v) => { handleAddTag('countriesVisited', v); setCountryInput(''); }}
-                        suggestions={COUNTRIES}
-                        placeholder="Add a country..."
-                        existingTags={profile.countriesVisited || []}
-                      />
-                      <button type="button" onClick={() => { if (countryInput.trim()) { handleAddTag('countriesVisited', countryInput.trim()); setCountryInput(''); } }}
-                        className="bg-stone-700 hover:bg-stone-600 p-2 rounded"><Plus size={16} /></button>
-                    </div>
-                    <div className="flex flex-wrap gap-2">
-                      {(profile.countriesVisited || []).map(tag => (
-                        <span key={tag} className="inline-flex items-center gap-1 bg-stone-800 border border-stone-700 text-xs px-2 py-1 rounded-full">
-                          {tag}
-                          <button type="button" onClick={() => handleRemoveTag('countriesVisited', tag)} className="hover:text-red-400"><X size={12} /></button>
-                        </span>
-                      ))}
-                    </div>
-                  </div>
-
-                  <div>
-                    <label className="text-xs text-stone-400 uppercase font-bold mb-2 block">Bucket List</label>
-                    <div className="flex gap-2 mb-2">
-                      <AutocompleteInput
-                        value={bucketInput}
-                        onChange={setBucketInput}
-                        onSelect={(v) => { handleAddTag('bucketList', v); setBucketInput(''); }}
-                        suggestions={COUNTRIES}
-                        placeholder="Dream destinations..."
-                        existingTags={profile.bucketList || []}
-                      />
-                      <button type="button" onClick={() => { if (bucketInput.trim()) { handleAddTag('bucketList', bucketInput.trim()); setBucketInput(''); } }}
-                        className="bg-stone-700 hover:bg-stone-600 p-2 rounded"><Plus size={16} /></button>
-                    </div>
-                    <div className="flex flex-wrap gap-2">
-                      {(profile.bucketList || []).map(tag => (
-                        <span key={tag} className="inline-flex items-center gap-1 bg-stone-800 border border-stone-700 text-xs px-2 py-1 rounded-full">
-                          {tag}
-                          <button type="button" onClick={() => handleRemoveTag('bucketList', tag)} className="hover:text-red-400"><X size={12} /></button>
-                        </span>
-                      ))}
-                    </div>
-                  </div>
-
-                  <div>
-                    <label className="text-xs text-stone-400 uppercase font-bold mb-2 block">Interests</label>
-                    <div className="flex gap-2 mb-2">
-                      <input
-                        type="text"
-                        value={interestInput}
-                        onChange={(e) => setInterestInput(e.target.value)}
-                        onKeyDown={(e) => { if (e.key === 'Enter' && interestInput.trim()) { handleAddTag('interests', interestInput.trim()); setInterestInput(''); } }}
-                        placeholder="e.g., hiking, street food..."
-                        className="flex-1 bg-stone-800 border border-stone-700 rounded px-3 py-2 text-sm focus:outline-none focus:border-orange-500"
-                      />
-                      <button type="button" onClick={() => { if (interestInput.trim()) { handleAddTag('interests', interestInput.trim()); setInterestInput(''); } }}
-                        className="bg-stone-700 hover:bg-stone-600 p-2 rounded"><Plus size={16} /></button>
-                    </div>
-                    <div className="flex flex-wrap gap-2">
-                      {(profile.interests || []).map(tag => (
-                        <span key={tag} className="inline-flex items-center gap-1 bg-stone-800 border border-stone-700 text-xs px-2 py-1 rounded-full">
-                          {tag}
-                          <button type="button" onClick={() => handleRemoveTag('interests', tag)} className="hover:text-red-400"><X size={12} /></button>
-                        </span>
-                      ))}
-                    </div>
-                  </div>
-
-                  <div>
-                    <label className="text-xs text-stone-400 uppercase font-bold mb-2 block">Restrictions / Requirements</label>
+                    <label className="text-xs text-stone-400 uppercase font-bold mb-2 block">{t('restrictions')}</label>
                     <div className="flex gap-2 mb-2">
                       <input
                         type="text"
                         value={restrictionInput}
                         onChange={(e) => setRestrictionInput(e.target.value)}
                         onKeyDown={(e) => { if (e.key === 'Enter' && restrictionInput.trim()) { handleAddTag('restrictions', restrictionInput.trim()); setRestrictionInput(''); } }}
-                        placeholder="e.g., vegetarian, wheelchair access..."
+                        placeholder={t('restrictionsPlaceholder')}
                         className="flex-1 bg-stone-800 border border-stone-700 rounded px-3 py-2 text-sm focus:outline-none focus:border-orange-500"
                       />
                       <button type="button" onClick={() => { if (restrictionInput.trim()) { handleAddTag('restrictions', restrictionInput.trim()); setRestrictionInput(''); } }}
@@ -676,11 +539,246 @@ export default function ProfilePanel({ isOpen, onClose }: ProfilePanelProps) {
                 </div>
               </Section>
 
+              {/* ACTIVITY WEIGHTING */}
+              <Section title={t('activityPreferences')} icon={Gauge}>
+                <div className="space-y-3">
+                  <p className="text-xs text-stone-500">{t('adjustSliders')}</p>
+                  <Slider label={`🎉 ${t('partyNightlife')}`} value={profile.activityWeighting?.party || 20} onChange={(v) => handleActivityChange('party', v)} />
+                  <Slider label={`🌿 ${t('natureOutdoors')}`} value={profile.activityWeighting?.nature || 30} onChange={(v) => handleActivityChange('nature', v)} />
+                  <Slider label={`🏛️ ${t('cultureHistory')}`} value={profile.activityWeighting?.culture || 25} onChange={(v) => handleActivityChange('culture', v)} />
+                  <Slider label={`🧗 ${t('adventureAdrenaline')}`} value={profile.activityWeighting?.adventure || 15} onChange={(v) => handleActivityChange('adventure', v)} />
+                  <Slider label={`🏖️ ${t('relaxationBeach')}`} value={profile.activityWeighting?.relaxation || 10} onChange={(v) => handleActivityChange('relaxation', v)} />
+                </div>
+              </Section>
+
+              {/* FOOD & GEAR */}
+              <Section title={t('foodAndGear')} icon={Utensils}>
+                <div className="space-y-4">
+                  <div>
+                    <label className="text-xs text-stone-400 uppercase font-bold mb-2 block">{t('foodPreference')}</label>
+                    <EnumSelector
+                      value={profile.foodPreference || 'street_food'}
+                      onChange={(v) => updateProfile({ foodPreference: v })}
+                      options={['street_food', 'restaurants', 'cooking', 'mixed']}
+                      labels={{ street_food: `🍜 ${t('streetFood')}`, restaurants: `🍽️ ${t('restaurants')}`, cooking: `🍳 ${t('cooking')}`, mixed: `🔀 ${t('mixed')}` }}
+                    />
+                  </div>
+
+                  <div>
+                    <label className="text-xs text-stone-400 uppercase font-bold mb-2 block">{t('packWeight')}</label>
+                    <EnumSelector
+                      value={profile.packWeight || 'moderate'}
+                      onChange={(v) => updateProfile({ packWeight: v })}
+                      options={['minimalist', 'moderate', 'maximalist']}
+                      labels={{ minimalist: `🎒 ${t('minimalist')}`, moderate: `🧳 ${t('moderatePack')}`, maximalist: `💼 ${t('maximalist')}` }}
+                    />
+                  </div>
+
+                  <div>
+                    <label className="text-xs text-stone-400 uppercase font-bold mb-2 block">{t('electronicsNeeds')}</label>
+                    <EnumSelector
+                      value={profile.electronicsTolerance || 'medium'}
+                      onChange={(v) => updateProfile({ electronicsTolerance: v })}
+                      options={['low', 'medium', 'high']}
+                      labels={{ low: `📵 ${t('minimal')}`, medium: `📱 ${t('phoneLaptop')}`, high: `🎬 ${t('creatorKit')}` }}
+                    />
+                  </div>
+                </div>
+              </Section>
+
+              {/* BUDGET */}
+              <Section title={t('budgetAndIncome')} icon={DollarSign}>
+                <div className="space-y-4">
+                  <div>
+                    <label className="text-xs text-stone-400 uppercase font-bold mb-2 block">{t('budgetStyle')}</label>
+                    <div className="space-y-2">
+                      {([
+                        { value: 'broke-backpacker' as const, label: t('brokeBackpacker'), emoji: '💸', tooltip: tAuth('brokeBackpackerTooltip') },
+                        { value: 'flashpacker' as const, label: t('flashpacker'), emoji: '💳', tooltip: tAuth('flashpackerTooltip') },
+                        { value: 'digital-nomad' as const, label: t('digitalNomad'), emoji: '💻', tooltip: tAuth('digitalNomadTooltip') },
+                      ]).map(opt => (
+                        <button
+                          key={opt.value}
+                          type="button"
+                          onClick={() => updateProfile({ budgetPreference: opt.value })}
+                          className={clsx(
+                            "w-full px-3 py-2 rounded-lg text-sm font-medium transition-colors border text-left flex items-center gap-2",
+                            profile.budgetPreference === opt.value
+                              ? "bg-orange-600 border-orange-500 text-white"
+                              : "bg-stone-800 border-stone-700 hover:border-stone-600"
+                          )}
+                        >
+                          <span>{opt.emoji}</span>
+                          <span className="flex-1">{opt.label}</span>
+                          <Tooltip content={opt.tooltip}>
+                            <Info size={14} className={clsx(
+                              "cursor-help",
+                              profile.budgetPreference === opt.value ? "text-white/70" : "text-stone-400"
+                            )} />
+                          </Tooltip>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="text-xs text-stone-400 uppercase font-bold mb-2 block">{t('incomeType')}</label>
+                    <EnumSelector
+                      value={profile.incomeType || 'savings_only'}
+                      onChange={(v) => updateProfile({ incomeType: v })}
+                      options={['remote_worker', 'seasonal_worker', 'savings_only', 'passive_income']}
+                      labels={{ remote_worker: `💻 ${t('remoteWorker')}`, seasonal_worker: `🌾 ${t('seasonalWorker')}`, savings_only: `🏦 ${t('savingsOnly')}`, passive_income: `📈 ${t('passiveIncome')}` }}
+                    />
+                  </div>
+
+                  <div>
+                    <label className="text-xs text-stone-400 uppercase font-bold">{t('monthlyBudget')}</label>
+                    <input
+                      type="number"
+                      value={localBudget}
+                      onChange={(e) => setLocalBudget(e.target.value)}
+                      onBlur={handleBudgetBlur}
+                      className="w-full bg-stone-800 border border-stone-700 rounded px-3 py-2 text-sm mt-1 focus:outline-none focus:border-orange-500"
+                    />
+                  </div>
+                </div>
+              </Section>
+
+              {/* SAFETY */}
+              <Section title={t('safetyPreferences')} icon={Shield}>
+                <div className="space-y-3">
+                  <ToggleButton
+                    value={profile.walkAtNight ?? true}
+                    onChange={(v) => updateProfile({ walkAtNight: v })}
+                    label={t('comfortableNightWalking')}
+                  />
+                  <ToggleButton
+                    value={profile.experiencedMotos ?? false}
+                    onChange={(v) => updateProfile({ experiencedMotos: v })}
+                    label={t('experiencedMotorbikes')}
+                  />
+                  <ToggleButton
+                    value={profile.openToCouchsurfing ?? false}
+                    onChange={(v) => updateProfile({ openToCouchsurfing: v })}
+                    label={t('openToCouchsurfing')}
+                  />
+                  <div className="flex items-center gap-2">
+                    <div className="flex-1">
+                      <ToggleButton
+                        value={profile.femaleTravelerConcerns ?? false}
+                        onChange={(v) => updateProfile({ femaleTravelerConcerns: v })}
+                        label={t('femaleTravelerConcerns')}
+                      />
+                    </div>
+                    <Tooltip content={t('femaleTravelerTooltip')}>
+                      <Info size={16} className="text-stone-400 cursor-help" />
+                    </Tooltip>
+                  </div>
+                </div>
+              </Section>
+
+              {/* CONTENT CREATION */}
+              <Section title={t('contentCreation')} icon={Camera}>
+                <div className="space-y-3">
+                  <ToggleButton
+                    value={profile.instagramFriendly ?? false}
+                    onChange={(v) => updateProfile({ instagramFriendly: v })}
+                    label={t('prioritizeInstagram')}
+                  />
+                  <ToggleButton
+                    value={profile.hiddenSpots ?? true}
+                    onChange={(v) => updateProfile({ hiddenSpots: v })}
+                    label={t('showHiddenGems')}
+                  />
+                  <ToggleButton
+                    value={profile.videoFocus ?? false}
+                    onChange={(v) => updateProfile({ videoFocus: v })}
+                    label={t('focusVideo')}
+                  />
+                </div>
+              </Section>
+
+              {/* TRAVEL HISTORY */}
+              <Section title={t('travelHistoryDreams')} icon={MapPin}>
+                <div className="space-y-4">
+                  <div>
+                    <label className="text-xs text-stone-400 uppercase font-bold mb-2 block">{t('countriesVisited')}</label>
+                    <div className="flex gap-2 mb-2">
+                      <AutocompleteInput
+                        value={countryInput}
+                        onChange={setCountryInput}
+                        onSelect={(v) => { handleAddTag('countriesVisited', v); setCountryInput(''); }}
+                        suggestions={COUNTRIES}
+                        placeholder={t('addCountry')}
+                        existingTags={profile.countriesVisited || []}
+                      />
+                      <button type="button" onClick={() => { if (countryInput.trim()) { handleAddTag('countriesVisited', countryInput.trim()); setCountryInput(''); } }}
+                        className="bg-stone-700 hover:bg-stone-600 p-2 rounded"><Plus size={16} /></button>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      {(profile.countriesVisited || []).map(tag => (
+                        <span key={tag} className="inline-flex items-center gap-1 bg-stone-800 border border-stone-700 text-xs px-2 py-1 rounded-full">
+                          {tag}
+                          <button type="button" onClick={() => handleRemoveTag('countriesVisited', tag)} className="hover:text-red-400"><X size={12} /></button>
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="text-xs text-stone-400 uppercase font-bold mb-2 block">{t('bucketList')}</label>
+                    <div className="flex gap-2 mb-2">
+                      <AutocompleteInput
+                        value={bucketInput}
+                        onChange={setBucketInput}
+                        onSelect={(v) => { handleAddTag('bucketList', v); setBucketInput(''); }}
+                        suggestions={COUNTRIES}
+                        placeholder={t('dreamDestinations')}
+                        existingTags={profile.bucketList || []}
+                      />
+                      <button type="button" onClick={() => { if (bucketInput.trim()) { handleAddTag('bucketList', bucketInput.trim()); setBucketInput(''); } }}
+                        className="bg-stone-700 hover:bg-stone-600 p-2 rounded"><Plus size={16} /></button>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      {(profile.bucketList || []).map(tag => (
+                        <span key={tag} className="inline-flex items-center gap-1 bg-stone-800 border border-stone-700 text-xs px-2 py-1 rounded-full">
+                          {tag}
+                          <button type="button" onClick={() => handleRemoveTag('bucketList', tag)} className="hover:text-red-400"><X size={12} /></button>
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="text-xs text-stone-400 uppercase font-bold mb-2 block">{t('interests')}</label>
+                    <div className="flex gap-2 mb-2">
+                      <input
+                        type="text"
+                        value={interestInput}
+                        onChange={(e) => setInterestInput(e.target.value)}
+                        onKeyDown={(e) => { if (e.key === 'Enter' && interestInput.trim()) { handleAddTag('interests', interestInput.trim()); setInterestInput(''); } }}
+                        placeholder={t('interestsPlaceholder')}
+                        className="flex-1 bg-stone-800 border border-stone-700 rounded px-3 py-2 text-sm focus:outline-none focus:border-orange-500"
+                      />
+                      <button type="button" onClick={() => { if (interestInput.trim()) { handleAddTag('interests', interestInput.trim()); setInterestInput(''); } }}
+                        className="bg-stone-700 hover:bg-stone-600 p-2 rounded"><Plus size={16} /></button>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      {(profile.interests || []).map(tag => (
+                        <span key={tag} className="inline-flex items-center gap-1 bg-stone-800 border border-stone-700 text-xs px-2 py-1 rounded-full">
+                          {tag}
+                          <button type="button" onClick={() => handleRemoveTag('interests', tag)} className="hover:text-red-400"><X size={12} /></button>
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </Section>
+
               {/* Info Note */}
               <div className="bg-orange-500/10 border border-orange-500/30 rounded-lg p-3">
                 <p className="text-xs text-orange-200">
-                  Your profile helps Will give you personalized recommendations tailored to your travel style,
-                  budget, and preferences. All data is stored locally in your browser.
+                  {t('profileNote')}
                 </p>
               </div>
             </div>

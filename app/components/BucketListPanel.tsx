@@ -7,6 +7,7 @@ import {
 } from 'lucide-react';
 import clsx from 'clsx';
 import { useChats, BucketListItem } from '../context/ChatsContext';
+import { useTranslations } from '../context/LocaleContext';
 
 type BucketCategory = BucketListItem['category'];
 
@@ -30,6 +31,7 @@ const CATEGORY_ORDER: NonNullable<BucketCategory>[] = [
 
 export default function BucketListPanel() {
   const { activeChat, addBucketListItem, toggleBucketListItem, removeBucketListItem } = useChats();
+  const t = useTranslations('bucketList');
   const [isAdding, setIsAdding] = useState(false);
   const [newItemText, setNewItemText] = useState('');
   const [newItemCategory, setNewItemCategory] = useState<NonNullable<BucketCategory>>('experience');
@@ -79,7 +81,7 @@ export default function BucketListPanel() {
         <div className="flex items-center justify-between mb-2">
           <div className="flex items-center gap-2">
             <ListChecks size={18} className="text-orange-500" />
-            <span className="font-medium">Trip Bucket List</span>
+            <span className="font-medium">{t('title')}</span>
           </div>
           {totalCount > 0 && (
             <span className="text-xs text-stone-400 bg-stone-700 px-2 py-0.5 rounded-full">
@@ -108,7 +110,7 @@ export default function BucketListPanel() {
             className="w-full px-4 py-3 flex items-center gap-2 text-orange-400 hover:bg-stone-800 transition-colors border-b border-stone-800"
           >
             <Plus size={16} />
-            <span className="text-sm">Add bucket list item</span>
+            <span className="text-sm">{t('addItem')}</span>
           </button>
         )}
 
@@ -239,10 +241,7 @@ export default function BucketListPanel() {
         {bucketList.length === 0 && !isAdding && (
           <div className="p-8 text-center">
             <Star size={40} className="mx-auto mb-3 text-stone-600" />
-            <p className="text-sm text-stone-400 mb-1">No bucket list items yet</p>
-            <p className="text-xs text-stone-500">
-              Add things you want to experience on this trip
-            </p>
+            <p className="text-sm text-stone-400 mb-1">{t('noItems')}</p>
           </div>
         )}
       </div>

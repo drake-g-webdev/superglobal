@@ -2,10 +2,14 @@
 
 import { Plus, MessageSquare, Trash2, Plane } from 'lucide-react';
 import { useChats } from '../context/ChatsContext';
+import { useTranslations, useLocale } from '../context/LocaleContext';
 import clsx from 'clsx';
 
 export default function ChatSidebar() {
   const { chats, activeChatId, createChat, deleteChat, setActiveChat } = useChats();
+  const t = useTranslations('sidebar');
+  const tCommon = useTranslations('common');
+  const { locale } = useLocale();
 
   const handleNewChat = () => {
     createChat();
@@ -13,7 +17,7 @@ export default function ChatSidebar() {
 
   const handleDeleteChat = (e: React.MouseEvent, chatId: string) => {
     e.stopPropagation();
-    if (confirm('Delete this trip?')) {
+    if (confirm(t('deleteTrip'))) {
       deleteChat(chatId);
     }
   };
@@ -23,10 +27,13 @@ export default function ChatSidebar() {
     const now = new Date();
     const diffDays = Math.floor((now.getTime() - date.getTime()) / (1000 * 60 * 60 * 24));
 
-    if (diffDays === 0) return 'Today';
-    if (diffDays === 1) return 'Yesterday';
-    if (diffDays < 7) return `${diffDays} days ago`;
-    return date.toLocaleDateString();
+    if (diffDays === 0) return tCommon('today');
+    if (diffDays === 1) return tCommon('yesterday');
+    if (diffDays < 7) {
+      const template = tCommon('daysAgo');
+      return template.replace('{days}', String(diffDays));
+    }
+    return date.toLocaleDateString(locale === 'es' ? 'es-ES' : 'en-US');
   };
 
   return (
@@ -38,14 +45,14 @@ export default function ChatSidebar() {
           className="w-full flex items-center justify-center gap-2 bg-orange-600 hover:bg-orange-500 text-white px-4 py-2.5 rounded-lg font-medium transition-colors"
         >
           <Plus size={18} />
-          New Trip
+          {t('newTrip')}
         </button>
       </div>
 
       {/* Chat List */}
       <div className="flex-1 overflow-y-auto py-2">
         <div className="px-3 py-2">
-          <h3 className="text-xs font-bold text-stone-500 uppercase tracking-wider">Your Trips</h3>
+          <h3 className="text-xs font-bold text-stone-500 uppercase tracking-wider">{t('yourTrips')}</h3>
         </div>
 
         {chats.map(chat => (
@@ -73,7 +80,7 @@ export default function ChatSidebar() {
                   {chat.title}
                 </p>
                 <p className="text-xs text-stone-500 truncate">
-                  {chat.destination !== 'General' ? chat.destination : 'No destination'}
+                  {chat.destination !== 'General' ? chat.destination : t('noDestination')}
                 </p>
               </div>
 
@@ -94,7 +101,7 @@ export default function ChatSidebar() {
         {chats.length === 0 && (
           <div className="px-4 py-8 text-center">
             <MessageSquare size={24} className="mx-auto text-stone-600 mb-2" />
-            <p className="text-sm text-stone-500">No trips yet</p>
+            <p className="text-sm text-stone-500">{t('noTrips')}</p>
           </div>
         )}
       </div>

@@ -9,6 +9,7 @@ import {
 import clsx from 'clsx';
 import { useChats, EventType, TripEvent, CostCategory } from '../context/ChatsContext';
 import { useProfile } from '../context/ProfileContext';
+import { useTranslations } from '../context/LocaleContext';
 
 const EVENT_TYPE_CONFIG: Record<EventType, { label: string; icon: React.ComponentType<{ size?: number; className?: string }>; color: string }> = {
   festival: { label: 'Festival', icon: PartyPopper, color: '#f97316' },
@@ -37,8 +38,9 @@ function StarRating({ rating }: { rating: number }) {
 }
 
 export default function EventsPanel() {
-  const { activeChat, setEvents, toggleEventInterest, clearEvents, addBucketListItem, addCostItem } = useChats();
+  const { activeChat, setEvents, addEvents, toggleEventInterest, clearEvents, addBucketListItem, addCostItem } = useChats();
   const { profile, isProfileSet } = useProfile();
+  const t = useTranslations('events');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showAdvisory, setShowAdvisory] = useState(true);
@@ -199,7 +201,13 @@ export default function EventsPanel() {
           budgetTip: e.budget_tip,
           backpackerRating: e.backpacker_rating,
         }));
-        setEvents(activeChat.id, mappedEvents, data.travel_advisory || '');
+
+        // If we already have events, add to them instead of replacing
+        if (events.length > 0) {
+          addEvents(activeChat.id, mappedEvents, data.travel_advisory || undefined);
+        } else {
+          setEvents(activeChat.id, mappedEvents, data.travel_advisory || '');
+        }
       }
     } catch (err) {
       console.error('Error discovering events:', err);
@@ -227,7 +235,7 @@ export default function EventsPanel() {
         <div className="flex items-center justify-between mb-2">
           <div className="flex items-center gap-2">
             <CalendarDays size={18} className="text-orange-500" />
-            <span className="font-medium">Events & Happenings</span>
+            <span className="font-medium">{t('title')}</span>
           </div>
           {events.length > 0 && (
             <div className="flex items-center gap-2">
@@ -262,12 +270,12 @@ export default function EventsPanel() {
           {isLoading ? (
             <>
               <Loader2 size={16} className="animate-spin" />
-              Discovering...
+              Searching...
             </>
           ) : (
             <>
               <Sparkles size={16} />
-              {events.length > 0 ? 'Rediscover Events' : 'Discover Events'}
+              {events.length > 0 ? 'Find More Events' : 'Discover Events'}
             </>
           )}
         </button>
@@ -485,10 +493,7 @@ export default function EventsPanel() {
           /* Empty State */
           <div className="p-8 text-center">
             <CalendarDays size={40} className="mx-auto mb-3 text-stone-600" />
-            <p className="text-sm text-stone-400 mb-1">No events discovered yet</p>
-            <p className="text-xs text-stone-500">
-              Click the button above to find events during your trip
-            </p>
+            <p className="text-sm text-stone-400 mb-1">{t('noEvents')}</p>
           </div>
         )}
       </div>

@@ -1,11 +1,12 @@
 "use client";
 
 import { useState, useRef, useEffect, useCallback } from 'react';
-import { Send, MapPin, DollarSign, User, Settings, Compass, Calendar, Target, Map as MapIcon, Plus, Check, Loader2, MessageSquare, ChevronLeft, ChevronRight, Calculator, ListChecks, Backpack, CalendarDays } from 'lucide-react';
+import { Send, MapPin, DollarSign, User, Settings, Compass, Calendar, Target, Map as MapIcon, Plus, Check, Loader2, MessageSquare, ChevronLeft, ChevronRight, Calculator, ListChecks, Backpack, CalendarDays, Mountain, Sailboat, Tent, Footprints } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import clsx from 'clsx';
 import { useChats, MapPinType, CostCategory } from '../context/ChatsContext';
 import { useProfile } from '../context/ProfileContext';
+import { useTranslations } from '../context/LocaleContext';
 import ChatSidebar from './ChatSidebar';
 import ProfilePanel from './ProfilePanel';
 import TripSetupWizard from './TripSetupWizard';
@@ -14,6 +15,70 @@ import CostDashboard from './CostDashboard';
 import BucketListPanel from './BucketListPanel';
 import PackingListPanel from './PackingListPanel';
 import EventsPanel from './EventsPanel';
+
+// Adventure-themed thinking messages with icons
+const THINKING_MESSAGES = [
+    { text: "Trekking through the jungle for answers...", Icon: Footprints },
+    { text: "Scaling mountain peaks to find the best routes...", Icon: Mountain },
+    { text: "Sailing uncharted waters for hidden gems...", Icon: Sailboat },
+    { text: "Setting up camp to research your destination...", Icon: Tent },
+    { text: "Following ancient trails and local secrets...", Icon: Compass },
+    { text: "Exploring off the beaten path for you...", Icon: MapIcon },
+];
+
+// Thinking animation component
+function ThinkingAnimation() {
+    const [messageIndex, setMessageIndex] = useState(0);
+
+    useEffect(() => {
+        const interval = setInterval(() => {
+            setMessageIndex((prev) => (prev + 1) % THINKING_MESSAGES.length);
+        }, 3000);
+        return () => clearInterval(interval);
+    }, []);
+
+    const currentMessage = THINKING_MESSAGES[messageIndex];
+    const IconComponent = currentMessage.Icon;
+
+    return (
+        <div className="flex items-center gap-3">
+            <motion.div
+                key={messageIndex}
+                initial={{ scale: 0.8, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                exit={{ scale: 0.8, opacity: 0 }}
+                transition={{ duration: 0.3 }}
+                className="flex-shrink-0"
+            >
+                <motion.div
+                    animate={{
+                        y: [0, -4, 0],
+                        rotate: [0, 5, -5, 0]
+                    }}
+                    transition={{
+                        duration: 2,
+                        repeat: Infinity,
+                        ease: "easeInOut"
+                    }}
+                >
+                    <IconComponent size={20} className="text-orange-400" />
+                </motion.div>
+            </motion.div>
+            <AnimatePresence mode="wait">
+                <motion.span
+                    key={messageIndex}
+                    initial={{ opacity: 0, x: -10 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    exit={{ opacity: 0, x: 10 }}
+                    transition={{ duration: 0.3 }}
+                    className="text-stone-400 text-sm italic"
+                >
+                    {currentMessage.text}
+                </motion.span>
+            </AnimatePresence>
+        </div>
+    );
+}
 
 // Extracted location from AI
 interface ExtractedLocation {
@@ -29,10 +94,17 @@ type MessageLocations = Record<number, ExtractedLocation[]>;
 export default function ChatInterface() {
     const { activeChat, updateChat, addMessage, addMapPin, addCostItems, addTouristTrap, updateMapView, mergeConversationVariables } = useChats();
     const { profile, isProfileSet } = useProfile();
+    const t = useTranslations('chat');
+    const tProfile = useTranslations('profile');
+    const tTripSetup = useTranslations('tripSetup');
+    const tMap = useTranslations('map');
+    const tCosts = useTranslations('costs');
+    const tBucket = useTranslations('bucketList');
+    const tPacking = useTranslations('packingList');
+    const tEvents = useTranslations('events');
 
     const [input, setInput] = useState('');
     const [isLoading, setIsLoading] = useState(false);
-    const [streamingContent, setStreamingContent] = useState<string>(''); // For streaming responses
     const [isProfileOpen, setIsProfileOpen] = useState(false);
     const [isTripSetupOpen, setIsTripSetupOpen] = useState(false);
     const [isMapExpanded, setIsMapExpanded] = useState(true);
@@ -446,7 +518,7 @@ export default function ChatInterface() {
                 {isExtracting && (
                     <div className="mt-2 flex items-center gap-2 text-xs text-stone-500">
                         <Loader2 size={12} className="animate-spin" />
-                        Finding locations...
+                        {tMap('findingLocations')}
                     </div>
                 )}
             </>
@@ -462,7 +534,6 @@ export default function ChatInterface() {
         addMessage(chatId, userMsg);
         setInput('');
         setIsLoading(true);
-        setStreamingContent(''); // Reset streaming content
 
         // Auto-update title from first user message
         if (activeChat.messages.length === 1 && activeChat.title === 'New Trip') {
@@ -546,63 +617,33 @@ export default function ChatInterface() {
         const userMsgContent = userMsg.content;
 
         try {
-            // Use streaming endpoint
-            const response = await fetch('http://localhost:8000/api/chat/stream', {
+            // Use non-streaming endpoint for cleaner response handling
+            const response = await fetch('http://localhost:8000/api/chat', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(requestBody),
             });
 
             if (!response.ok) throw new Error('Failed to fetch');
-            if (!response.body) throw new Error('No response body');
 
-            const reader = response.body.getReader();
-            const decoder = new TextDecoder();
-            let fullResponse = '';
+            const data = await response.json();
+            const fullResponse = data.response || data.message || '';
 
-            while (true) {
-                const { done, value } = await reader.read();
-                if (done) break;
+            // Add the response to messages
+            addMessage(chatId, { role: 'assistant', content: fullResponse });
 
-                const chunk = decoder.decode(value, { stream: true });
-                const lines = chunk.split('\n');
-
-                for (const line of lines) {
-                    if (line.startsWith('data: ')) {
-                        try {
-                            const data = JSON.parse(line.slice(6));
-                            if (data.content) {
-                                fullResponse += data.content;
-                                setStreamingContent(fullResponse);
-                            }
-                            if (data.done) {
-                                // Streaming complete - add the full message to context
-                                addMessage(chatId, { role: 'assistant', content: fullResponse });
-                                setStreamingContent(''); // Clear streaming state
-
-                                // Extract locations, costs, and conversation variables
-                                const assistantMsgIdx = activeChat.messages.length + 1;
-                                console.log('[Extraction] Extracting from streamed message at index:', assistantMsgIdx);
-                                if (fullResponse.length > 100) {
-                                    extractLocationsFromMessage(fullResponse, assistantMsgIdx, chatId, destination);
-                                    extractCostsFromMessage(fullResponse, assistantMsgIdx, chatId, destination);
-                                    // Extract conversation variables from the exchange
-                                    extractConversationVariables(userMsgContent, fullResponse, chatId, destination);
-                                }
-                            }
-                            if (data.error) {
-                                throw new Error(data.error);
-                            }
-                        } catch (parseError) {
-                            // Ignore parse errors for incomplete JSON
-                        }
-                    }
-                }
+            // Extract locations, costs, and conversation variables
+            const assistantMsgIdx = activeChat.messages.length + 1;
+            console.log('[Extraction] Extracting from message at index:', assistantMsgIdx);
+            if (fullResponse.length > 100) {
+                extractLocationsFromMessage(fullResponse, assistantMsgIdx, chatId, destination);
+                extractCostsFromMessage(fullResponse, assistantMsgIdx, chatId, destination);
+                // Extract conversation variables from the exchange
+                extractConversationVariables(userMsgContent, fullResponse, chatId, destination);
             }
         } catch (error) {
             console.error(error);
-            setStreamingContent('');
-            addMessage(chatId, { role: 'assistant', content: "Sorry mate, something went wrong. Check the console." });
+            addMessage(chatId, { role: 'assistant', content: "Sorry, something went wrong. Please try again." });
         } finally {
             setIsLoading(false);
         }
@@ -637,7 +678,7 @@ export default function ChatInterface() {
                         <div className="flex items-center justify-between px-4 py-2 border-b border-stone-700 bg-stone-900">
                             <div className="flex items-center gap-2">
                                 <MessageSquare size={16} className="text-orange-500" />
-                                <span className="text-sm font-medium">Chat with Will</span>
+                                <span className="text-sm font-medium">Chat with Sierra</span>
                             </div>
                             <div className="flex items-center gap-2">
                                 <button
@@ -680,7 +721,7 @@ export default function ChatInterface() {
                                         <div className="grid grid-cols-2 gap-3">
                                             <div className="space-y-1">
                                                 <label className="text-xs text-stone-400 uppercase font-bold flex items-center gap-1">
-                                                    <MapPin size={10} /> Destination
+                                                    <MapPin size={10} /> {tTripSetup('mainDestination')}
                                                 </label>
                                                 <input
                                                     type="text"
@@ -691,16 +732,16 @@ export default function ChatInterface() {
                                             </div>
                                             <div className="space-y-1">
                                                 <label className="text-xs text-stone-400 uppercase font-bold flex items-center gap-1">
-                                                    <DollarSign size={10} /> Budget
+                                                    <DollarSign size={10} /> {tProfile('budgetStyle')}
                                                 </label>
                                                 <select
                                                     value={activeChat.budget}
                                                     onChange={(e) => updateChat(activeChat.id, { budget: e.target.value })}
                                                     className="w-full bg-stone-800 border border-stone-700 rounded p-2 text-sm focus:outline-none focus:border-orange-500 transition-colors"
                                                 >
-                                                    <option>Broke Backpacker</option>
-                                                    <option>Flashpacker</option>
-                                                    <option>Digital Nomad</option>
+                                                    <option>{tProfile('brokeBackpacker')}</option>
+                                                    <option>{tProfile('flashpacker')}</option>
+                                                    <option>{tProfile('digitalNomad')}</option>
                                                 </select>
                                             </div>
                                         </div>
@@ -715,14 +756,14 @@ export default function ChatInterface() {
                                                 )}
                                             >
                                                 <Compass size={14} />
-                                                {activeChat.tripSetupComplete ? 'Edit Trip' : 'Set Up Trip'}
+                                                {activeChat.tripSetupComplete ? tTripSetup('title') : tTripSetup('title')}
                                             </button>
                                             <button
                                                 onClick={() => setIsProfileOpen(true)}
                                                 className="flex items-center justify-center gap-2 bg-stone-800 hover:bg-stone-700 border border-stone-700 px-3 py-2 rounded-lg text-xs transition-colors"
                                             >
                                                 <User size={14} />
-                                                Profile
+                                                {tProfile('title')}
                                             </button>
                                         </div>
                                         {activeChat.tripSetupComplete && (
@@ -770,21 +811,15 @@ export default function ChatInterface() {
                                 ))}
                             </AnimatePresence>
                             {isLoading && (
-                                <div className="flex justify-start">
-                                    <div className={clsx(
-                                        "bg-stone-700 rounded-2xl rounded-tl-none p-3 text-sm max-w-[90%]",
-                                        streamingContent ? "text-stone-100" : "text-stone-400 animate-pulse"
-                                    )}>
-                                        {streamingContent ? (
-                                            <div className="leading-relaxed">
-                                                {renderMessageContent(streamingContent, -1, true)}
-                                                <span className="inline-block w-2 h-4 bg-orange-500 ml-1 animate-pulse" />
-                                            </div>
-                                        ) : (
-                                            "Thinking..."
-                                        )}
+                                <motion.div
+                                    initial={{ opacity: 0, y: 10 }}
+                                    animate={{ opacity: 1, y: 0 }}
+                                    className="flex justify-start"
+                                >
+                                    <div className="bg-stone-700 rounded-2xl rounded-tl-none p-4 text-sm max-w-[90%]">
+                                        <ThinkingAnimation />
                                     </div>
-                                </div>
+                                </motion.div>
                             )}
                             <div ref={messagesEndRef} />
                         </div>
@@ -797,7 +832,7 @@ export default function ChatInterface() {
                                     value={input}
                                     onChange={(e) => setInput(e.target.value)}
                                     onKeyDown={(e) => e.key === 'Enter' && sendMessage()}
-                                    placeholder={isProfileSet ? `Ask Will anything, ${profile.name}...` : "Ask Will anything..."}
+                                    placeholder={t('typeMessage')}
                                     className="flex-1 bg-stone-800 text-stone-100 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500 transition-all"
                                 />
                                 <button
@@ -835,7 +870,7 @@ export default function ChatInterface() {
                                     )}
                                 >
                                     <MapIcon size={13} />
-                                    <span className="hidden sm:inline">Map</span>
+                                    <span className="hidden sm:inline">{tMap('title')}</span>
                                     {(activeChat?.mapPins?.length ?? 0) > 0 && (
                                         <span className="bg-orange-600/30 text-orange-400 text-[10px] px-1 py-0.5 rounded-full">
                                             {activeChat?.mapPins?.length}
@@ -852,7 +887,7 @@ export default function ChatInterface() {
                                     )}
                                 >
                                     <ListChecks size={13} />
-                                    <span className="hidden sm:inline">Bucket</span>
+                                    <span className="hidden sm:inline">{tBucket('title')}</span>
                                     {(activeChat?.bucketList?.length ?? 0) > 0 && (
                                         <span className="bg-purple-600/30 text-purple-400 text-[10px] px-1 py-0.5 rounded-full">
                                             {activeChat?.bucketList?.filter(i => i.completed).length}/{activeChat?.bucketList?.length}
@@ -869,7 +904,7 @@ export default function ChatInterface() {
                                     )}
                                 >
                                     <Backpack size={13} />
-                                    <span className="hidden sm:inline">Pack</span>
+                                    <span className="hidden sm:inline">{tPacking('title')}</span>
                                     {(activeChat?.packingList?.items?.length ?? 0) > 0 && (
                                         <span className="bg-blue-600/30 text-blue-400 text-[10px] px-1 py-0.5 rounded-full">
                                             {activeChat?.packingList?.items?.filter(i => i.packed).length}/{activeChat?.packingList?.items?.length}
@@ -886,7 +921,7 @@ export default function ChatInterface() {
                                     )}
                                 >
                                     <Calculator size={13} />
-                                    <span className="hidden sm:inline">Budget</span>
+                                    <span className="hidden sm:inline">{tCosts('title')}</span>
                                     {(activeChat?.tripCosts?.items?.length ?? 0) > 0 && (
                                         <span className="bg-green-600/30 text-green-400 text-[10px] px-1 py-0.5 rounded-full">
                                             ${activeChat?.tripCosts?.items?.reduce((sum, item) => sum + item.amount * item.quantity, 0).toFixed(0)}
@@ -903,7 +938,7 @@ export default function ChatInterface() {
                                     )}
                                 >
                                     <CalendarDays size={13} />
-                                    <span className="hidden sm:inline">Events</span>
+                                    <span className="hidden sm:inline">{tEvents('title')}</span>
                                     {(activeChat?.eventsData?.events?.length ?? 0) > 0 && (
                                         <span className="bg-pink-600/30 text-pink-400 text-[10px] px-1 py-0.5 rounded-full">
                                             {activeChat?.eventsData?.events?.filter(e => e.isInterested).length || activeChat?.eventsData?.events?.length}

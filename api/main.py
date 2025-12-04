@@ -98,11 +98,13 @@ async def search_perplexity(query: str, destination: str) -> str:
 
 
 # Base Persona Prompt - Enhanced with all context fields
-BASE_SYSTEM_TEMPLATE = """You are Will Hatton, the founder of The Broke Backpacker.
+BASE_SYSTEM_TEMPLATE = """You are Sierra, a seasoned adventure traveler at The Broke Backpacker.
 You are an adventurous, raw, and honest traveler who has been on the road for over a decade.
 You hate tourist traps and love getting off the beaten path.
 You speak in a friendly, casual tone - like chatting with a well-traveled friend. Keep it natural and relaxed, but avoid overusing slang or catchphrases.
 You are NOT a robot. You are a seasoned backpacker helping someone plan their trip.
+
+IMPORTANT: Do NOT use emojis in your responses. Keep your text clean and professional.
 
 TRIP CONTEXT:
 Destination: {destination}
@@ -818,6 +820,62 @@ class GeocodeResponse(BaseModel):
     formatted_name: Optional[str] = None
 
 
+# Country name to ISO 3166-1 alpha-2 code mapping for Mapbox filtering
+COUNTRY_CODES = {
+    "ecuador": "ec",
+    "peru": "pe",
+    "colombia": "co",
+    "bolivia": "bo",
+    "chile": "cl",
+    "argentina": "ar",
+    "brazil": "br",
+    "thailand": "th",
+    "vietnam": "vn",
+    "cambodia": "kh",
+    "laos": "la",
+    "myanmar": "mm",
+    "indonesia": "id",
+    "malaysia": "my",
+    "singapore": "sg",
+    "philippines": "ph",
+    "japan": "jp",
+    "south korea": "kr",
+    "korea": "kr",
+    "china": "cn",
+    "india": "in",
+    "nepal": "np",
+    "sri lanka": "lk",
+    "mexico": "mx",
+    "guatemala": "gt",
+    "belize": "bz",
+    "honduras": "hn",
+    "nicaragua": "ni",
+    "costa rica": "cr",
+    "panama": "pa",
+    "spain": "es",
+    "portugal": "pt",
+    "france": "fr",
+    "italy": "it",
+    "germany": "de",
+    "netherlands": "nl",
+    "belgium": "be",
+    "greece": "gr",
+    "turkey": "tr",
+    "morocco": "ma",
+    "egypt": "eg",
+    "south africa": "za",
+    "kenya": "ke",
+    "tanzania": "tz",
+    "australia": "au",
+    "new zealand": "nz",
+    "usa": "us",
+    "united states": "us",
+    "canada": "ca",
+    "uk": "gb",
+    "united kingdom": "gb",
+    "england": "gb",
+}
+
 # Known city center points for proximity-based geocoding (lng, lat)
 # Using proximity is better than bounding boxes for POI searches
 CITY_CENTERS = {
@@ -850,7 +908,7 @@ CITY_CENTERS = {
     "seoul": (126.98, 37.57),
     "hong kong": (114.17, 22.32),
 
-    # South America
+    # South America - Ecuador
     "quito": (-78.47, -0.18),
     "ecuador": (-78.47, -0.18),  # Default to Quito for Ecuador
     "guayaquil": (-79.90, -2.17),
@@ -867,6 +925,21 @@ CITY_CENTERS = {
     "puyo": (-77.99, -1.49),
     "riobamba": (-78.65, -1.67),
     "loja": (-79.20, -4.00),
+    # Ecuador mountains/volcanoes
+    "illiniza": (-78.71, -0.66),
+    "illiniza norte": (-78.71, -0.66),
+    "illiniza sur": (-78.71, -0.66),
+    "chimborazo": (-78.82, -1.47),
+    "cayambe": (-77.99, 0.03),
+    "antisana": (-78.14, -0.48),
+    "tungurahua": (-78.44, -1.47),
+    "sangay": (-78.34, -2.07),
+    "el altar": (-78.41, -1.68),
+    "pichincha": (-78.60, -0.17),
+    "pasochoa": (-78.49, -0.44),
+    "imbabura": (-78.18, 0.26),
+    "cotacachi": (-78.33, 0.37),
+    # South America - Colombia
     "bogota": (-74.07, 4.71),
     "medellin": (-75.56, 6.25),
     "cartagena": (-75.51, 10.39),
@@ -902,6 +975,75 @@ CITY_CENTERS = {
     "melbourne": (144.96, -37.81),
     "auckland": (174.76, -36.85),
 }
+
+
+async def geocode_with_google(query: str, region_bias: str = None) -> dict | None:
+    """Try to geocode using Google Geocoding API (most accurate).
+
+    Args:
+        query: The search query (should include location context like "Illiniza Norte, Ecuador")
+        region_bias: Optional ISO 3166-1 alpha-2 country code for region biasing
+    """
+    import httpx
+    from urllib.parse import quote
+
+    google_api_key = os.getenv("GOOGLE_MAPS_API_KEY")
+    if not google_api_key:
+        logging.info("[Google Geocoding] No API key configured, skipping")
+        return None
+
+    try:
+        params = {
+            "address": query,
+            "key": google_api_key,
+        }
+
+        # Add region bias if provided
+        if region_bias:
+            params["region"] = region_bias
+            logging.info(f"[Google Geocoding] Using region bias: {region_bias}")
+
+        async with httpx.AsyncClient() as client:
+            response = await client.get(
+                "https://maps.googleapis.com/maps/api/geocode/json",
+                params=params,
+                timeout=10.0
+            )
+
+            if response.status_code == 200:
+                data = response.json()
+                status = data.get("status")
+
+                if status == "OK":
+                    results = data.get("results", [])
+                    if results:
+                        # Get the first (most relevant) result
+                        result = results[0]
+                        location = result.get("geometry", {}).get("location", {})
+                        lat = location.get("lat")
+                        lng = location.get("lng")
+                        formatted_address = result.get("formatted_address", query)
+
+                        if lat and lng:
+                            logging.info(f"[Google Geocoding] SUCCESS: {formatted_address} at [{lng}, {lat}]")
+                            return {
+                                "coordinates": [lng, lat],  # Mapbox format: [lng, lat]
+                                "formatted_name": formatted_address,
+                                "is_exact": True
+                            }
+
+                elif status == "ZERO_RESULTS":
+                    logging.info(f"[Google Geocoding] No results for: {query}")
+                else:
+                    logging.warning(f"[Google Geocoding] API returned status: {status}")
+
+            else:
+                logging.error(f"[Google Geocoding] HTTP error: {response.status_code}")
+
+    except Exception as e:
+        logging.error(f"[Google Geocoding] Error: {e}")
+
+    return None
 
 
 async def geocode_with_nominatim(query: str, viewbox: tuple = None) -> dict | None:
@@ -973,8 +1115,15 @@ async def geocode_with_nominatim(query: str, viewbox: tuple = None) -> dict | No
         return None
 
 
-async def geocode_with_mapbox(query: str, proximity: tuple = None, allow_place_fallback: bool = False) -> dict | None:
-    """Try to geocode using Mapbox (fallback)."""
+async def geocode_with_mapbox(query: str, proximity: tuple = None, allow_place_fallback: bool = False, country_code: str = None) -> dict | None:
+    """Try to geocode using Mapbox (fallback).
+
+    Args:
+        query: The search query
+        proximity: Optional (lng, lat) tuple for bias
+        allow_place_fallback: If True, allow place/locality type results
+        country_code: Optional ISO 3166-1 alpha-2 country code to restrict results
+    """
     import httpx
     from urllib.parse import quote
 
@@ -991,6 +1140,11 @@ async def geocode_with_mapbox(query: str, proximity: tuple = None, allow_place_f
 
         if proximity:
             params["proximity"] = f"{proximity[0]},{proximity[1]}"
+
+        # Add country restriction if provided - this is crucial for accuracy
+        if country_code:
+            params["country"] = country_code
+            logging.info(f"[Mapbox] Restricting search to country: {country_code}")
 
         encoded_query = quote(query)
 
@@ -1043,13 +1197,35 @@ async def geocode_location(request: GeocodeRequest):
     """Geocode a place name using multiple services for best results.
 
     Strategy:
-    1. Try Nominatim (OpenStreetMap) first - best for hostels/hotels
-    2. Fall back to Mapbox if Nominatim doesn't find a POI
-    3. Only return results that are actual POIs, not generic cities
+    1. Check if place name is a known location (mountains, landmarks, etc.)
+    2. Try Google Geocoding first (most accurate, especially for landmarks/mountains)
+    3. Try Nominatim (OpenStreetMap) - good for hostels/hotels
+    4. Fall back to Mapbox if others don't find a POI
     """
 
     # Build the search query
     location_context = (request.city if request.city else request.context or "").strip()
+    place_name_lower = request.place_name.lower().strip()
+
+    # FIRST: Check if the place name itself is in CITY_CENTERS (for mountains, landmarks, etc.)
+    # This handles cases like "Illiniza Norte" which might not be in geocoding services
+    for known_place, center in CITY_CENTERS.items():
+        if known_place in place_name_lower or place_name_lower in known_place:
+            logging.info(f"[Geocode] Direct match found in CITY_CENTERS: {known_place} at {center}")
+            return GeocodeResponse(
+                success=True,
+                coordinates=[center[0], center[1]],
+                formatted_name=f"{request.place_name}, {location_context}" if location_context else request.place_name
+            )
+
+    # Extract country code from context for API filtering
+    country_code = None
+    context_lower = location_context.lower()
+    for country_name, code in COUNTRY_CODES.items():
+        if country_name in context_lower:
+            country_code = code
+            logging.info(f"[Geocode] Detected country code: {code} from context '{location_context}'")
+            break
 
     # Get proximity point for the area
     proximity_point = None
@@ -1073,21 +1249,33 @@ async def geocode_location(request: GeocodeRequest):
     # Also try just the name
     queries_to_try.append(request.place_name)
 
-    logging.info(f"[Geocode] Searching for: {queries_to_try}")
+    logging.info(f"[Geocode] Searching for: {queries_to_try} (country_code={country_code})")
 
-    # Try Nominatim first (better for accommodations)
+    # Try Google Geocoding first (most accurate, especially for mountains/landmarks)
+    for query in queries_to_try:
+        result = await geocode_with_google(query, region_bias=country_code)
+        if result:
+            logging.info(f"[Geocode] SUCCESS via Google: {result['formatted_name']}")
+            return GeocodeResponse(
+                success=True,
+                coordinates=result["coordinates"],
+                formatted_name=result["formatted_name"]
+            )
+
+    # Try Nominatim (better for accommodations like hostels/hotels)
     for query in queries_to_try:
         result = await geocode_with_nominatim(query, viewbox)
         if result:
+            logging.info(f"[Geocode] SUCCESS via Nominatim: {result['formatted_name']}")
             return GeocodeResponse(
                 success=True,
                 coordinates=result["coordinates"],
                 formatted_name=result["formatted_name"]
             )
 
-    # Fall back to Mapbox (strict POI mode)
+    # Fall back to Mapbox (strict POI mode) WITH country restriction
     for query in queries_to_try:
-        result = await geocode_with_mapbox(query, proximity_point, allow_place_fallback=False)
+        result = await geocode_with_mapbox(query, proximity_point, allow_place_fallback=False, country_code=country_code)
         if result:
             return GeocodeResponse(
                 success=True,
@@ -1095,11 +1283,11 @@ async def geocode_location(request: GeocodeRequest):
                 formatted_name=result["formatted_name"]
             )
 
-    # Final fallback: allow place-type results (city/town level)
+    # Final fallback: allow place-type results (city/town level) WITH country restriction
     # This is better than nothing - at least puts the pin in the right general area
     logging.info(f"[Geocode] No POI found, trying place-type fallback...")
     for query in queries_to_try:
-        result = await geocode_with_mapbox(query, proximity_point, allow_place_fallback=True)
+        result = await geocode_with_mapbox(query, proximity_point, allow_place_fallback=True, country_code=country_code)
         if result:
             is_exact = result.get("is_exact", False)
             logging.info(f"[Geocode] Using place fallback (is_exact={is_exact}): {result['formatted_name']}")

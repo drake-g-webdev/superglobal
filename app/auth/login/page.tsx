@@ -3,8 +3,9 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { Compass, Mail, Lock, Loader2, AlertCircle, Key } from 'lucide-react';
+import { Mail, Lock, Loader2, AlertCircle, Key } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
+import SpinningGlobe from '../../components/SpinningGlobe';
 
 export default function LoginPage() {
   const router = useRouter();
@@ -56,11 +57,11 @@ export default function LoginPage() {
       <div className="w-full max-w-md">
         {/* Logo */}
         <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-16 h-16 bg-orange-600 rounded-full mb-4">
-            <Compass size={32} className="text-white" />
+          <div className="inline-flex items-center justify-center w-20 h-20 mb-4">
+            <SpinningGlobe size={80} />
           </div>
-          <h1 className="text-2xl font-bold text-white">SuperGlobal</h1>
-          <p className="text-stone-400 mt-2">Welcome back, traveler!</p>
+          <h1 className="text-2xl font-bold text-white font-mono">superglobal.travel</h1>
+          <p className="text-stone-400 mt-2">embark</p>
         </div>
 
         {/* Form */}

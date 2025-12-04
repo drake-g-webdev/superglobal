@@ -44,7 +44,7 @@ export default function AppContent() {
       <div className="z-10 max-w-[1600px] w-full items-center justify-between font-mono text-sm flex">
         {/* Logo/Title - Left side */}
         <p className="flex items-center border-b border-stone-800 bg-stone-900/90 pb-4 pt-4 backdrop-blur-2xl lg:rounded-xl lg:border lg:bg-stone-800/50 lg:p-3">
-          The Broke Backpacker AI
+          superglobal
         </p>
 
         {/* Right side - Language selector and Profile dropdown */}

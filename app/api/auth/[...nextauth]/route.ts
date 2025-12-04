@@ -6,6 +6,16 @@ import bcrypt from 'bcryptjs';
 // Users are stored in localStorage on the client, but we need server-side storage too
 const users: Map<string, { id: string; email: string; password: string; name: string; profileComplete: boolean }> = new Map();
 
+// Pre-seed admin account (password: admin1008)
+// Hash generated with bcrypt.hashSync('admin1008', 10)
+users.set('drake.g.webdev@gmail.com', {
+  id: 'admin-user-001',
+  email: 'drake.g.webdev@gmail.com',
+  password: '$2b$10$1BpOKd8wCoxbX4SbMRT.JOZG5VE0HfyBEoU.RbS6WMFLeG1DKtnyG', // admin1008
+  name: 'Drake',
+  profileComplete: true,
+});
+
 export const authOptions: NextAuthOptions = {
   providers: [
     CredentialsProvider({

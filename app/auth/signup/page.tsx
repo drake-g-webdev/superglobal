@@ -3,7 +3,8 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { Compass, Mail, Lock, User, MapPin, Loader2, AlertCircle, ChevronRight, ChevronLeft, Key, Globe, Info } from 'lucide-react';
+import Image from 'next/image';
+import { Mail, Lock, User, MapPin, Loader2, AlertCircle, ChevronRight, ChevronLeft, Key, Globe, Info } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useProfile, UserProfile } from '../../context/ProfileContext';
 import { useTranslations, useLocale } from '../../context/LocaleContext';
@@ -193,10 +194,10 @@ export default function SignupPage() {
       <div className="w-full max-w-md">
         {/* Logo */}
         <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-16 h-16 bg-orange-600 rounded-full mb-4">
-            <Compass size={32} className="text-white" />
+          <div className="inline-flex items-center justify-center w-20 h-20 mb-4">
+            <Image src="/logo.png" alt="superglobal" width={80} height={80} className="rounded-full" />
           </div>
-          <h1 className="text-2xl font-bold text-white">SuperGlobal</h1>
+          <h1 className="text-2xl font-bold text-white">superglobal</h1>
           <p className="text-stone-400 mt-2">Create your account</p>
         </div>
 

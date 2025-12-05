@@ -3,11 +3,12 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from langchain_openai import ChatOpenAI, OpenAIEmbeddings
-from langchain_community.vectorstores import Chroma
+from langchain_pinecone import PineconeVectorStore
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.runnables import RunnablePassthrough, RunnableBranch, RunnableLambda
 from langchain_core.messages import HumanMessage, AIMessage
+from pinecone import Pinecone
 from typing import Optional
 import os
 import logging
@@ -32,18 +33,49 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Initialize RAG components
-DB_DIR = os.path.join(os.path.dirname(__file__), "vector_store")
-embeddings = OpenAIEmbeddings(model="text-embedding-3-small")
+# Initialize RAG components with Pinecone
+PINECONE_API_KEY = os.getenv("PINECONE_API_KEY")
+PINECONE_INDEX = os.getenv("PINECONE_INDEX", "brokepacker-articles")
 
-# Check if vector store exists
-if os.path.exists(DB_DIR):
-    vectorstore = Chroma(persist_directory=DB_DIR, embedding_function=embeddings)
-    retriever = vectorstore.as_retriever(search_kwargs={"k": 5})
+# Use text-embedding-3-large to match Pinecone index (3072 dimensions)
+embeddings = OpenAIEmbeddings(model="text-embedding-3-large")
+
+# Initialize Pinecone vector store
+vectorstore = None
+retriever = None
+
+if PINECONE_API_KEY:
+    try:
+        pc = Pinecone(api_key=PINECONE_API_KEY)
+        index = pc.Index(PINECONE_INDEX)
+
+        # Check if index has vectors
+        stats = index.describe_index_stats()
+        total_vectors = stats.get("total_vector_count", 0)
+
+        if total_vectors > 0:
+            vectorstore = PineconeVectorStore(
+                index=index,
+                embedding=embeddings,
+                text_key="text"
+            )
+            retriever = vectorstore.as_retriever(search_kwargs={"k": 5})
+            logging.info(f"Pinecone initialized with {total_vectors} vectors in index '{PINECONE_INDEX}'")
+        else:
+            logging.warning(f"Pinecone index '{PINECONE_INDEX}' is empty. RAG will work once vectors are uploaded.")
+            # Still create the vectorstore for future use
+            vectorstore = PineconeVectorStore(
+                index=index,
+                embedding=embeddings,
+                text_key="text"
+            )
+            retriever = vectorstore.as_retriever(search_kwargs={"k": 5})
+    except Exception as e:
+        logging.error(f"Failed to initialize Pinecone: {e}")
+        vectorstore = None
+        retriever = None
 else:
-    logging.warning("Vector store not found. Please run ingest.py first.")
-    vectorstore = None
-    retriever = None
+    logging.warning("PINECONE_API_KEY not set. Vector search disabled.")
 
 # LLM
 llm = ChatOpenAI(model="gpt-4o-mini", temperature=0.7)
@@ -547,8 +579,7 @@ def build_conversation_variables_section(conv_vars: Optional[ConversationVarsInp
 @app.post("/api/chat")
 async def chat(request: ChatRequest):
     """Non-streaming chat endpoint (kept for backwards compatibility)."""
-    if not vectorstore:
-        raise HTTPException(status_code=503, detail="Vector store not initialized")
+    # Allow chat even without vectorstore - will use web search as fallback
 
     # Build context
     chat_history = []
@@ -562,22 +593,29 @@ async def chat(request: ChatRequest):
     trip_context_section = build_trip_context_section(request.trip_context, request.user_profile)
     conversation_variables_section = build_conversation_variables_section(request.conversation_variables)
 
-    # Get vector store context
-    if chat_history:
-        contextualize_q_prompt = ChatPromptTemplate.from_messages([
-            ("system", "Given a chat history and the latest user question, formulate a standalone question. Do NOT answer, just reformulate if needed."),
-            MessagesPlaceholder("chat_history"),
-            ("human", "{input}"),
-        ])
-        standalone_q = (contextualize_q_prompt | llm | StrOutputParser()).invoke({
-            "input": request.message,
-            "chat_history": chat_history
-        })
-        docs = retriever.invoke(standalone_q)
+    # Get vector store context (if available)
+    context = ""
+    if retriever:
+        try:
+            if chat_history:
+                contextualize_q_prompt = ChatPromptTemplate.from_messages([
+                    ("system", "Given a chat history and the latest user question, formulate a standalone question. Do NOT answer, just reformulate if needed."),
+                    MessagesPlaceholder("chat_history"),
+                    ("human", "{input}"),
+                ])
+                standalone_q = (contextualize_q_prompt | llm | StrOutputParser()).invoke({
+                    "input": request.message,
+                    "chat_history": chat_history
+                })
+                docs = retriever.invoke(standalone_q)
+            else:
+                docs = retriever.invoke(request.message)
+            context = format_docs(docs)
+        except Exception as e:
+            logging.warning(f"Vector retrieval failed: {e}")
+            context = ""
     else:
-        docs = retriever.invoke(request.message)
-
-    context = format_docs(docs)
+        logging.info("No vector store available, using web search only")
 
     # Get Perplexity web context (hybrid search)
     web_context = await search_perplexity(request.message, request.destination)
@@ -609,8 +647,6 @@ async def chat(request: ChatRequest):
 @app.post("/api/chat/stream")
 async def chat_stream(request: ChatRequest):
     """Streaming chat endpoint with hybrid Perplexity + Vector DB search."""
-    if not vectorstore:
-        raise HTTPException(status_code=503, detail="Vector store not initialized")
 
     async def generate():
         try:
@@ -626,24 +662,30 @@ async def chat_stream(request: ChatRequest):
             trip_context_section = build_trip_context_section(request.trip_context, request.user_profile)
             conversation_variables_section = build_conversation_variables_section(request.conversation_variables)
 
-            # Get vector store context (run retrieval)
-            logging.info(f"[Stream] Starting retrieval for: {request.message[:50]}...")
-
-            if chat_history:
-                contextualize_q_prompt = ChatPromptTemplate.from_messages([
-                    ("system", "Given a chat history and the latest user question, formulate a standalone question. Do NOT answer, just reformulate if needed."),
-                    MessagesPlaceholder("chat_history"),
-                    ("human", "{input}"),
-                ])
-                standalone_q = (contextualize_q_prompt | llm | StrOutputParser()).invoke({
-                    "input": request.message,
-                    "chat_history": chat_history
-                })
-                docs = retriever.invoke(standalone_q)
+            # Get vector store context (if available)
+            context = ""
+            if retriever:
+                logging.info(f"[Stream] Starting retrieval for: {request.message[:50]}...")
+                try:
+                    if chat_history:
+                        contextualize_q_prompt = ChatPromptTemplate.from_messages([
+                            ("system", "Given a chat history and the latest user question, formulate a standalone question. Do NOT answer, just reformulate if needed."),
+                            MessagesPlaceholder("chat_history"),
+                            ("human", "{input}"),
+                        ])
+                        standalone_q = (contextualize_q_prompt | llm | StrOutputParser()).invoke({
+                            "input": request.message,
+                            "chat_history": chat_history
+                        })
+                        docs = retriever.invoke(standalone_q)
+                    else:
+                        docs = retriever.invoke(request.message)
+                    context = format_docs(docs)
+                except Exception as e:
+                    logging.warning(f"[Stream] Vector retrieval failed: {e}")
+                    context = ""
             else:
-                docs = retriever.invoke(request.message)
-
-            context = format_docs(docs)
+                logging.info("[Stream] No vector store available, using web search only")
 
             # Get Perplexity web context in parallel (hybrid search)
             logging.info("[Stream] Fetching Perplexity web context...")

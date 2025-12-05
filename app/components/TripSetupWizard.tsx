@@ -78,12 +78,6 @@ const ACCOMMODATION_OPTIONS: { value: AccommodationStyle; label: string; emoji: 
   { value: 'mixed', label: 'Mixed', emoji: '🔀' },
 ];
 
-const LANGUAGES = [
-  'English', 'Spanish', 'French', 'German', 'Portuguese', 'Italian', 'Dutch',
-  'Russian', 'Mandarin', 'Japanese', 'Korean', 'Arabic', 'Hindi', 'Thai',
-  'Vietnamese', 'Indonesian', 'Tagalog', 'Turkish', 'Polish', 'Swedish'
-];
-
 // Step indicator component
 function StepIndicator({ currentStep, totalSteps }: { currentStep: number; totalSteps: number }) {
   return (
@@ -142,7 +136,6 @@ export default function TripSetupWizard({ isOpen, onClose, chatId }: TripSetupWi
   const [startDate, setStartDate] = useState('');
   const [dealBreakers, setDealBreakers] = useState<string[]>([]);
   const [newDealBreaker, setNewDealBreaker] = useState('');
-  const [preferredLanguage, setPreferredLanguage] = useState('English');
   const [tripGoals, setTripGoals] = useState<TripGoal[]>([]);
   const [customGoals, setCustomGoals] = useState<string[]>([]);
   const [newCustomGoal, setNewCustomGoal] = useState('');
@@ -159,7 +152,6 @@ export default function TripSetupWizard({ isOpen, onClose, chatId }: TripSetupWi
       setTripDuration(String(ctx.tripDurationDays || 14));
       setStartDate(ctx.startDate || '');
       setDealBreakers(ctx.dealBreakers || []);
-      setPreferredLanguage(ctx.preferredLanguage || 'English');
       setTripGoals(ctx.tripGoals || []);
       setCustomGoals(ctx.customGoals || []);
       setStep(0);
@@ -203,9 +195,12 @@ export default function TripSetupWizard({ isOpen, onClose, chatId }: TripSetupWi
     }
   };
 
+  // Check if destination is a valid country
+  const isValidCountry = COUNTRIES.includes(destination);
+
   const handleSave = () => {
-    // Update chat destination
-    updateChat(chatId, { destination: destination || 'General' });
+    // Update chat destination (must be a valid country)
+    updateChat(chatId, { destination: destination });
 
     // Update trip context
     updateTripContext(chatId, {
@@ -216,7 +211,6 @@ export default function TripSetupWizard({ isOpen, onClose, chatId }: TripSetupWi
       tripDurationDays: parseInt(tripDuration) || 14,
       startDate: startDate || undefined,
       dealBreakers,
-      preferredLanguage,
       tripGoals,
       customGoals,
     });
@@ -226,6 +220,10 @@ export default function TripSetupWizard({ isOpen, onClose, chatId }: TripSetupWi
   };
 
   const handleNext = () => {
+    // On step 0, require valid country before proceeding
+    if (step === 0 && !isValidCountry) {
+      return;
+    }
     if (step < totalSteps - 1) setStep(step + 1);
     else handleSave();
   };
@@ -253,9 +251,19 @@ export default function TripSetupWizard({ isOpen, onClose, chatId }: TripSetupWi
                   onChange={(e) => { setDestination(e.target.value); setShowDestinationSuggestions(true); }}
                   onFocus={() => setShowDestinationSuggestions(true)}
                   onBlur={() => setTimeout(() => setShowDestinationSuggestions(false), 200)}
-                  placeholder={t('destinationPlaceholder')}
-                  className="w-full bg-stone-800 border border-stone-700 rounded-lg px-4 py-3 focus:outline-none focus:border-orange-500"
+                  placeholder="e.g. Thailand, Peru, Vietnam..."
+                  className={clsx(
+                    "w-full bg-stone-800 rounded-lg px-4 py-3 focus:outline-none",
+                    destination && isValidCountry
+                      ? "border-2 border-green-500/50"
+                      : destination && !isValidCountry
+                      ? "border-2 border-red-500/50"
+                      : "border border-stone-700 focus:border-orange-500"
+                  )}
                 />
+                {destination && !isValidCountry && (
+                  <p className="text-xs text-red-400 mt-1">Please select a valid country from the list</p>
+                )}
                 {showDestinationSuggestions && filteredDestinations.length > 0 && (
                   <div className="absolute z-10 w-full mt-1 bg-stone-800 border border-stone-700 rounded-lg shadow-lg max-h-48 overflow-y-auto">
                     {filteredDestinations.map(country => (
@@ -305,19 +313,6 @@ export default function TripSetupWizard({ isOpen, onClose, chatId }: TripSetupWi
                 />
               </div>
 
-              <div>
-                <label className="text-xs text-stone-400 uppercase font-bold mb-1 block">{t('preferredLanguage')}</label>
-                <select
-                  value={preferredLanguage}
-                  onChange={(e) => setPreferredLanguage(e.target.value)}
-                  className="w-full bg-stone-800 border border-stone-700 rounded-lg px-4 py-3 focus:outline-none focus:border-orange-500"
-                >
-                  {LANGUAGES.map(lang => (
-                    <option key={lang} value={lang}>{lang}</option>
-                  ))}
-                </select>
-                <p className="text-xs text-stone-500 mt-1">{t('willCanRespond')}</p>
-              </div>
             </div>
           </div>
         );
@@ -331,7 +326,7 @@ export default function TripSetupWizard({ isOpen, onClose, chatId }: TripSetupWi
             </div>
 
             <div className="space-y-4">
-              <div className="bg-stone-800/50 rounded-lg p-4 space-y-3">
+              <div className="bg-stone-800/50 rounded-lg p-4 space-y-3 border border-dashed border-stone-600">
                 <input
                   type="text"
                   value={newStop.location}
@@ -360,14 +355,21 @@ export default function TripSetupWizard({ isOpen, onClose, chatId }: TripSetupWi
                     placeholder={t('notesOptional')}
                     className="flex-1 bg-stone-800 border border-stone-700 rounded px-3 py-2 text-sm focus:outline-none focus:border-orange-500"
                   />
-                  <button
-                    type="button"
-                    onClick={handleAddStop}
-                    className="bg-orange-600 hover:bg-orange-500 px-3 py-2 rounded text-sm font-medium"
-                  >
-                    <Plus size={16} />
-                  </button>
                 </div>
+                <button
+                  type="button"
+                  onClick={handleAddStop}
+                  disabled={!newStop.location.trim()}
+                  className={clsx(
+                    "w-full flex items-center justify-center gap-2 py-2.5 rounded-lg text-sm font-medium transition-colors",
+                    newStop.location.trim()
+                      ? "bg-orange-600 hover:bg-orange-500 text-white"
+                      : "bg-stone-700 text-stone-400 cursor-not-allowed"
+                  )}
+                >
+                  <Plus size={16} />
+                  Add to Itinerary
+                </button>
               </div>
 
               {itinerary.length > 0 && (

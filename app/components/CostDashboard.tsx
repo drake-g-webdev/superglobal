@@ -8,7 +8,25 @@ import {
 } from 'lucide-react';
 import clsx from 'clsx';
 import { useChats, CostCategory, CostItem, TouristTrap } from '../context/ChatsContext';
+import { useProfile } from '../context/ProfileContext';
 import { useTranslations } from '../context/LocaleContext';
+import { Users } from 'lucide-react';
+
+// Map travel style to number of travelers
+const TRAVEL_STYLE_COUNT: Record<string, number> = {
+  solo: 1,
+  couple: 2,
+  group: 4,
+  family: 4,
+};
+
+// Categories where cost is per-person (tickets, flights, activities, food)
+const PER_PERSON_CATEGORIES: CostCategory[] = [
+  'transport_flights',
+  'activities',
+  'food',
+  'visa_border',
+];
 
 const CATEGORY_CONFIG: Record<CostCategory, { label: string; icon: React.ComponentType<{ size?: number; className?: string }>; color: string }> = {
   accommodation: { label: 'Accommodation', icon: Bed, color: '#f97316' },
@@ -54,28 +72,44 @@ const defaultFormState: AddCostFormState = {
 
 export default function CostDashboard() {
   const { activeChat, addCostItem, updateCostItem, removeCostItem, clearCostItems, removeTouristTrap } = useChats();
+  const { profile } = useProfile();
   const t = useTranslations('costs');
   const [isAddingCost, setIsAddingCost] = useState(false);
   const [editingItemId, setEditingItemId] = useState<string | null>(null);
   const [formState, setFormState] = useState<AddCostFormState>(defaultFormState);
   const [expandedCategories, setExpandedCategories] = useState<Set<CostCategory>>(new Set(CATEGORY_ORDER));
   const [showTraps, setShowTraps] = useState(true);
+  const [applyTravelerMultiplier, setApplyTravelerMultiplier] = useState(true);
 
   const costs = activeChat?.tripCosts?.items || [];
   const touristTraps = activeChat?.touristTraps || [];
   const tripDays = activeChat?.tripContext?.tripDurationDays || 14;
 
-  // Calculate totals by category
+  // Get traveler count from profile
+  const travelerCount = TRAVEL_STYLE_COUNT[profile.travelStyle] || 1;
+  const travelStyleLabel = profile.travelStyle.charAt(0).toUpperCase() + profile.travelStyle.slice(1);
+
+  // Helper to calculate item cost with traveler multiplier
+  const getItemCost = (item: CostItem) => {
+    const baseCost = item.amount * item.quantity;
+    // Apply multiplier only to per-person categories and if toggle is on
+    if (applyTravelerMultiplier && PER_PERSON_CATEGORIES.includes(item.category) && travelerCount > 1) {
+      return baseCost * travelerCount;
+    }
+    return baseCost;
+  };
+
+  // Calculate totals by category (with traveler multiplier)
   const categoryTotals = useMemo(() => {
     const totals: Record<CostCategory, number> = {} as Record<CostCategory, number>;
     CATEGORY_ORDER.forEach(cat => totals[cat] = 0);
 
     costs.forEach(item => {
-      totals[item.category] += item.amount * item.quantity;
+      totals[item.category] += getItemCost(item);
     });
 
     return totals;
-  }, [costs]);
+  }, [costs, applyTravelerMultiplier, travelerCount]);
 
   // Calculate grand total
   const grandTotal = useMemo(() => {
@@ -185,11 +219,30 @@ export default function CostDashboard() {
           </button>
         </div>
 
+        {/* Traveler count indicator */}
+        {travelerCount > 1 && (
+          <button
+            onClick={() => setApplyTravelerMultiplier(!applyTravelerMultiplier)}
+            className={clsx(
+              "mb-2 w-full flex items-center justify-center gap-2 py-1.5 rounded-lg text-xs transition-colors",
+              applyTravelerMultiplier
+                ? "bg-blue-600/20 border border-blue-500/30 text-blue-400"
+                : "bg-stone-700/50 border border-stone-600 text-stone-400"
+            )}
+          >
+            <Users size={12} />
+            {applyTravelerMultiplier
+              ? `${travelStyleLabel} (${travelerCount}x for tickets/flights/food)`
+              : `${travelStyleLabel} mode off - showing per-person`
+            }
+          </button>
+        )}
+
         {/* Total Display */}
         <div className="bg-gradient-to-r from-orange-600/20 to-orange-500/10 rounded-lg p-3 border border-orange-500/30">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-xs text-stone-400">{t('totalSpent')}</p>
+              <p className="text-xs text-stone-400">{t('totalSpent')}{travelerCount > 1 && applyTravelerMultiplier ? ` (${travelerCount} travelers)` : ''}</p>
               <p className="text-2xl font-bold text-white">${grandTotal.toFixed(0)}</p>
             </div>
             <div className="text-right">
@@ -411,10 +464,13 @@ export default function CostDashboard() {
                             <p className="text-sm truncate">{item.name}</p>
                             <p className="text-xs text-stone-500">
                               ${item.amount} × {item.quantity} {item.unit}
+                              {applyTravelerMultiplier && PER_PERSON_CATEGORIES.includes(item.category) && travelerCount > 1 && (
+                                <span className="ml-1 text-blue-400">× {travelerCount}</span>
+                              )}
                               {item.isEstimate && <span className="ml-1 text-orange-400">(est)</span>}
                             </p>
                           </div>
-                          <span className="text-sm font-medium">${(item.amount * item.quantity).toFixed(0)}</span>
+                          <span className="text-sm font-medium">${getItemCost(item).toFixed(0)}</span>
                           <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                             <button
                               onClick={() => startEditing(item)}

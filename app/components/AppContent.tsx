@@ -7,7 +7,7 @@ import LanguageSelector from './LanguageSelector';
 import ProfileDropdown from './ProfileDropdown';
 import ProfilePanel from './ProfilePanel';
 import { useAuth } from '../context/AuthContext';
-import { Loader2 } from 'lucide-react';
+import { Loader2, Globe } from 'lucide-react';
 
 export default function AppContent() {
   const router = useRouter();
@@ -43,8 +43,9 @@ export default function AppContent() {
       {/* Header */}
       <div className="z-10 max-w-[1600px] w-full items-center justify-between font-mono text-sm flex">
         {/* Logo/Title - Left side */}
-        <p className="flex items-center border-b border-stone-800 bg-stone-900/90 pb-4 pt-4 backdrop-blur-2xl lg:rounded-xl lg:border lg:bg-stone-800/50 lg:p-3">
-          superglobal
+        <p className="flex items-center gap-2 border-b border-stone-800 bg-stone-900/90 pb-4 pt-4 backdrop-blur-2xl lg:rounded-xl lg:border lg:bg-stone-800/50 lg:p-3">
+          <Globe size={18} className="text-orange-500" />
+          superglobal.travel
         </p>
 
         {/* Right side - Language selector and Profile dropdown */}

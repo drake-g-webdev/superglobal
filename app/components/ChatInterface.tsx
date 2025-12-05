@@ -213,7 +213,7 @@ export default function ChatInterface() {
     }, [setExtractedLocations]);
 
     // Extract costs from a message using AI
-    const extractCostsFromMessage = useCallback(async (messageContent: string, messageIndex: number, chatId: string, destination: string) => {
+    const extractCostsFromMessage = useCallback(async (messageContent: string, messageIndex: number, chatId: string, destination: string, tripDays: number = 0) => {
         const key = `costs-${chatId}-${messageIndex}`;
         console.log('[Cost Extraction] Starting extraction for key:', key);
 
@@ -228,7 +228,7 @@ export default function ChatInterface() {
         setExtractingCosts(prev => new Set([...prev, key]));
 
         try {
-            console.log('[Cost Extraction] Calling API for:', destination);
+            console.log('[Cost Extraction] Calling API for:', destination, 'trip_days:', tripDays);
             const response = await fetch(`${API_URL}/api/extract-costs`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -236,19 +236,21 @@ export default function ChatInterface() {
                     response_text: messageContent,
                     destination: destination,
                     num_travelers: 1,
+                    trip_days: tripDays,
                 }),
             });
 
             if (response.ok) {
                 const data = await response.json();
                 console.log('[Cost Extraction] API Response:', data);
-                const typedCosts: ExtractedCost[] = (data.costs || []).map((cost: { name: string; category: string; amount: number; quantity: number; unit: string; notes: string }) => ({
+                const typedCosts: ExtractedCost[] = (data.costs || []).map((cost: { name: string; category: string; amount: number; quantity: number; unit: string; notes: string; text_to_match?: string }) => ({
                     name: cost.name,
                     category: (cost.category as CostCategory) || 'misc',
                     amount: cost.amount || 0,
                     quantity: cost.quantity || 1,
                     unit: cost.unit || 'trip',
                     notes: cost.notes || '',
+                    text_to_match: cost.text_to_match || '',
                 }));
 
                 console.log('[Cost Extraction] Extracted costs:', typedCosts.length, 'costs for message', messageIndex);
@@ -978,10 +980,11 @@ export default function ChatInterface() {
 
             // Extract locations, costs, itinerary, and conversation variables
             const assistantMsgIdx = activeChat.messages.length + 1;
-            console.log('[Extraction] Extracting from message at index:', assistantMsgIdx);
+            const tripDays = activeChat.tripContext?.tripDurationDays || 0;
+            console.log('[Extraction] Extracting from message at index:', assistantMsgIdx, 'trip_days:', tripDays);
             if (fullResponse.length > 100) {
                 extractLocationsFromMessage(fullResponse, assistantMsgIdx, chatId, destination);
-                extractCostsFromMessage(fullResponse, assistantMsgIdx, chatId, destination);
+                extractCostsFromMessage(fullResponse, assistantMsgIdx, chatId, destination, tripDays);
                 // Extract itinerary if the response looks like it might contain one
                 if (fullResponse.toLowerCase().includes('day') && (fullResponse.includes(':') || fullResponse.includes('-'))) {
                     extractItineraryFromMessage(fullResponse, assistantMsgIdx, chatId, destination);

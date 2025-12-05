@@ -1384,6 +1384,7 @@ class ExtractCostsRequest(BaseModel):
     response_text: str
     destination: str
     num_travelers: int = 1  # Number of people traveling together
+    trip_days: int = 0  # Trip duration in days (0 if unknown)
 
 
 class ExtractCostsResponse(BaseModel):
@@ -1391,64 +1392,88 @@ class ExtractCostsResponse(BaseModel):
     tourist_traps: list[TouristTrapWarning]
 
 
-COST_EXTRACTION_PROMPT = """Extract SPECIFIC, NAMED costs from this travel advice text. Only extract costs tied to identifiable items.
+COST_EXTRACTION_PROMPT = """You are an expert travel budget analyst. Extract ALL budget-relevant costs from this travel advice text.
 
+DESTINATION: {destination}
 NUMBER OF TRAVELERS: {num_travelers}
+TRIP DURATION: {trip_days} days (if known)
 
-WHAT TO EXTRACT (costs with SPECIFIC NAMES):
-✅ "Secret Garden Hostel: $15/night" → Extract (named hostel)
-✅ "Quilotoa Loop bus ticket: $5" → Extract (named route/service)
-✅ "Cotopaxi guided climb: $180" → Extract (named activity)
-✅ "World Nomads Explorer Plan: $356" → Extract (named product)
-✅ "Claro SIM card: $10" → Extract (named brand/product)
-✅ "Swing at the End of the World entrance: $5" → Extract (named attraction)
+=== EXTRACTION TIERS ===
 
-WHAT NOT TO EXTRACT (vague/general mentions):
-❌ "budget around $50/day" → Skip (general guidance, not a specific item)
-❌ "food costs about $10-15" → Skip (range without specific item)
-❌ "expect to spend $30 on accommodation" → Skip (no specific hostel named)
-❌ "transport will run you about $20" → Skip (no specific service named)
-❌ "you can get by on $40/day" → Skip (general daily budget)
-❌ "allocate $500 for activities" → Skip (category total, not specific items)
+TIER 1 - SPECIFIC NAMED ITEMS (highest priority):
+Extract any cost with a proper name you could Google:
+✅ "Secret Garden Hostel: $15/night" → name: "Secret Garden Hostel"
+✅ "Barisal cruise: $50" → name: "Barisal Cruise"
+✅ "Sundarbans wildlife cruise: $100" → name: "Sundarbans Wildlife Cruise"
+✅ "Claro SIM card: $10" → name: "Claro SIM Card"
 
-For each NAMED cost found, provide:
-- category: One of: accommodation, transport_local, transport_flights, food, activities, visa_border, sim_connectivity, moped_rental, misc
-- name: The SPECIFIC name (hostel name, tour name, restaurant name, product name)
-- amount: Unit price in USD
-- quantity: Number of units (nights, days, people, etc.)
+TIER 2 - BUDGET LINE ITEMS (from structured breakdowns):
+When the text contains a budget table or numbered breakdown, extract each line item:
+✅ "Accommodation: $1,000" (from a budget table) → name: "Accommodation ({destination})"
+✅ "Food: $590" (calculated total) → name: "Food Budget"
+✅ "Local Transportation: $118" → name: "Local Transportation"
+✅ "Excursions and Activities: $400" → name: "Activities & Excursions"
+✅ "Miscellaneous Expenses: $100" → name: "Miscellaneous"
+
+TIER 3 - CALCULATED DAILY COSTS:
+When daily rates are given with trip duration, extract the calculated total:
+✅ "Street food: $10/day for 59 days" → name: "Daily Food", amount: 590, quantity: 1, unit: "trip"
+✅ "Rickshaws: $2/day" (with 59 day trip) → name: "Local Transport (Daily)", amount: 118, quantity: 1, unit: "trip"
+
+=== WHAT TO SKIP ===
+❌ "budget around $50/day" → Skip (target/goal, not actual expense)
+❌ "you can get by on $40/day" → Skip (general advice)
+❌ "Total Estimated Budget: $2,308" → Skip (grand total, not line item)
+❌ Duplicate costs (if "Food: $590" is in table AND calculated above, only extract once)
+
+=== OUTPUT FORMAT ===
+
+For each cost, provide:
+- category: One of: accommodation, transport_local, transport_flights, food, activities, visa_border, sim_connectivity, moped_rental, gear, insurance, misc
+- name: Descriptive name (specific venue OR category name with context)
+- amount: Total cost in USD for this line item
+- quantity: Usually 1 for totals, or actual count for per-unit items
 - unit: One of: night, day, meal, trip, person, month, week
-- notes: Brief context
-- text_to_match: EXACT unique phrase from the text where this cost appears (for button placement)
+- notes: Brief context (e.g., "2 months", "59 days @ $10/day")
+- text_to_match: EXACT phrase from text where this cost appears (for button placement)
 
-TOURIST TRAPS: Extract warnings about scams or overpriced places:
+=== TOURIST TRAPS ===
+Also extract any warnings about scams or overpriced places:
 - name: The trap/scam name
 - description: What to watch out for
 - location: Where (optional)
 
-CRITICAL RULES:
-1. ONLY extract costs with SPECIFIC NAMED items - the name should be something you could Google
-2. Skip general budget advice, ranges, or category estimates
-3. The "name" field should be a proper noun or specific product/service name
+=== CRITICAL RULES ===
+1. Extract REAL planned expenses, not hypothetical advice
+2. For budget breakdowns, use the TOTAL calculated amount (not daily rate)
+3. Avoid duplicates - if the same expense appears multiple ways, extract once with the most specific name
 4. Convert local currencies to USD
-5. Parse quantities: "5 nights x $30" → amount: 30, quantity: 5
-6. For per-person costs, set quantity to {num_travelers}
-7. text_to_match must be unique - include the item name AND price for uniqueness
+5. text_to_match should be unique and include the price for accurate button placement
+6. When a table/breakdown exists, those ARE the costs to extract - they represent the actual budget
 
-TEXT TO ANALYZE:
-{text}
+=== EXAMPLE INPUT ===
+"### Budget Breakdown
+1. Accommodation: $500/month for 2 months = $1,000
+2. Food: $10/day x 59 days = $590
+3. Sundarbans Tour: $100
+4. Entry Fees: $50
+Total: $1,740"
 
-Respond with ONLY valid JSON:
+=== EXAMPLE OUTPUT ===
 {{
   "costs": [
-    {{"category": "accommodation", "name": "Secret Garden Hostel", "amount": 15, "quantity": 3, "unit": "night", "notes": "eco-hostel near Cotopaxi", "text_to_match": "Secret Garden Hostel: $15/night"}},
-    {{"category": "activities", "name": "Quilotoa Loop Trek", "amount": 25, "quantity": {num_travelers}, "unit": "person", "notes": "includes guide", "text_to_match": "Quilotoa Loop Trek: $25 per person"}}
+    {{"category": "accommodation", "name": "Accommodation (2 months)", "amount": 1000, "quantity": 1, "unit": "trip", "notes": "$500/month for 2 months", "text_to_match": "Accommodation: $500/month for 2 months = $1,000"}},
+    {{"category": "food", "name": "Daily Food Budget", "amount": 590, "quantity": 1, "unit": "trip", "notes": "$10/day for 59 days", "text_to_match": "Food: $10/day x 59 days = $590"}},
+    {{"category": "activities", "name": "Sundarbans Tour", "amount": 100, "quantity": 1, "unit": "trip", "notes": "Wildlife cruise", "text_to_match": "Sundarbans Tour: $100"}},
+    {{"category": "activities", "name": "Entry Fees", "amount": 50, "quantity": 1, "unit": "trip", "notes": "Various attractions", "text_to_match": "Entry Fees: $50"}}
   ],
-  "tourist_traps": [
-    {{"name": "Taxi overcharging", "description": "Always negotiate or use apps", "location": "Quito Airport"}}
-  ]
+  "tourist_traps": []
 }}
 
-If no SPECIFIC named costs found, respond with: {{"costs": [], "tourist_traps": []}}
+=== TEXT TO ANALYZE ===
+{text}
+
+Respond with ONLY valid JSON (no markdown, no explanation):
 """
 
 
@@ -1460,7 +1485,15 @@ async def extract_costs(request: ExtractCostsRequest):
     try:
         extraction_llm = ChatOpenAI(model="gpt-4o-mini", temperature=0)
 
-        prompt = COST_EXTRACTION_PROMPT.format(text=request.response_text, num_travelers=request.num_travelers)
+        # Format trip days for prompt
+        trip_days_str = f"{request.trip_days}" if request.trip_days > 0 else "unknown"
+
+        prompt = COST_EXTRACTION_PROMPT.format(
+            text=request.response_text,
+            destination=request.destination,
+            num_travelers=request.num_travelers,
+            trip_days=trip_days_str
+        )
         result = extraction_llm.invoke(prompt)
 
         content = result.content.strip()
@@ -1473,7 +1506,7 @@ async def extract_costs(request: ExtractCostsRequest):
 
         data = json.loads(content)
 
-        valid_categories = {"accommodation", "transport_local", "transport_flights", "food", "activities", "visa_border", "sim_connectivity", "moped_rental", "misc"}
+        valid_categories = {"accommodation", "transport_local", "transport_flights", "food", "activities", "visa_border", "sim_connectivity", "moped_rental", "gear", "insurance", "misc"}
         valid_units = {"night", "day", "meal", "trip", "person", "month", "week"}
 
         costs = []

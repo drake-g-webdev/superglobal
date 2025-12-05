@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from 'react';
-import { X, Plus, Calendar, DollarSign, Compass, ChevronLeft, ChevronRight, Check, Trash2, Users, Minus } from 'lucide-react';
+import { X, Plus, Calendar, DollarSign, Compass, ChevronLeft, ChevronRight, Check, Trash2, Users, Minus, GripVertical } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import clsx from 'clsx';
 import { useChats, TripContext, TransportationStyle, AccommodationStyle, TripGoal, ItineraryStop } from '../context/ChatsContext';
@@ -129,6 +129,10 @@ export default function TripSetupWizard({ isOpen, onClose, chatId }: TripSetupWi
   const [showDestinationSuggestions, setShowDestinationSuggestions] = useState(false);
   const [itinerary, setItinerary] = useState<ItineraryStop[]>([]);
   const [newStop, setNewStop] = useState({ location: '', days: 3, notes: '' });
+
+  // Drag and drop state for itinerary reordering
+  const [draggedIdx, setDraggedIdx] = useState<number | null>(null);
+  const [dragOverIdx, setDragOverIdx] = useState<number | null>(null);
   const [transportationStyles, setTransportationStyles] = useState<TransportationStyle[]>(['mixed']);
   const [accommodationStyles, setAccommodationStyles] = useState<AccommodationStyle[]>(['hostel_dorm']);
   const [dailyBudget, setDailyBudget] = useState('50');
@@ -188,6 +192,45 @@ export default function TripSetupWizard({ isOpen, onClose, chatId }: TripSetupWi
 
   const handleRemoveStop = (idx: number) => {
     setItinerary(itinerary.filter((_, i) => i !== idx));
+  };
+
+  // Drag and drop handlers for itinerary reordering
+  const handleDragStart = (idx: number) => {
+    setDraggedIdx(idx);
+  };
+
+  const handleDragOver = (e: React.DragEvent, idx: number) => {
+    e.preventDefault();
+    if (draggedIdx !== null && draggedIdx !== idx) {
+      setDragOverIdx(idx);
+    }
+  };
+
+  const handleDragLeave = () => {
+    setDragOverIdx(null);
+  };
+
+  const handleDrop = (e: React.DragEvent, dropIdx: number) => {
+    e.preventDefault();
+    if (draggedIdx === null || draggedIdx === dropIdx) {
+      setDraggedIdx(null);
+      setDragOverIdx(null);
+      return;
+    }
+
+    // Reorder the itinerary
+    const newItinerary = [...itinerary];
+    const [draggedItem] = newItinerary.splice(draggedIdx, 1);
+    newItinerary.splice(dropIdx, 0, draggedItem);
+    setItinerary(newItinerary);
+
+    setDraggedIdx(null);
+    setDragOverIdx(null);
+  };
+
+  const handleDragEnd = () => {
+    setDraggedIdx(null);
+    setDragOverIdx(null);
   };
 
   const handleToggleGoal = (goal: TripGoal) => {
@@ -424,19 +467,41 @@ export default function TripSetupWizard({ isOpen, onClose, chatId }: TripSetupWi
 
               {itinerary.length > 0 && (
                 <div className="space-y-2">
+                  {itinerary.length > 1 && (
+                    <p className="text-xs text-stone-500 flex items-center gap-1">
+                      <GripVertical size={12} /> Drag to reorder stops
+                    </p>
+                  )}
                   {itinerary.map((stop, idx) => (
-                    <div key={idx} className="flex items-center gap-3 bg-stone-800 rounded-lg p-3">
-                      <div className="w-6 h-6 rounded-full bg-orange-600 flex items-center justify-center text-xs font-bold">
+                    <div
+                      key={idx}
+                      draggable
+                      onDragStart={() => handleDragStart(idx)}
+                      onDragOver={(e) => handleDragOver(e, idx)}
+                      onDragLeave={handleDragLeave}
+                      onDrop={(e) => handleDrop(e, idx)}
+                      onDragEnd={handleDragEnd}
+                      className={clsx(
+                        "flex items-center gap-2 bg-stone-800 rounded-lg p-3 cursor-grab active:cursor-grabbing transition-all",
+                        draggedIdx === idx && "opacity-50 scale-95",
+                        dragOverIdx === idx && draggedIdx !== null && draggedIdx < idx && "border-b-2 border-orange-500",
+                        dragOverIdx === idx && draggedIdx !== null && draggedIdx > idx && "border-t-2 border-orange-500"
+                      )}
+                    >
+                      <div className="text-stone-500 hover:text-stone-300 cursor-grab">
+                        <GripVertical size={16} />
+                      </div>
+                      <div className="w-6 h-6 rounded-full bg-orange-600 flex items-center justify-center text-xs font-bold flex-shrink-0">
                         {idx + 1}
                       </div>
-                      <div className="flex-1">
-                        <p className="font-medium">{stop.location}</p>
-                        <p className="text-xs text-stone-400">{stop.days} days{stop.notes && ` • ${stop.notes}`}</p>
+                      <div className="flex-1 min-w-0">
+                        <p className="font-medium truncate">{stop.location}</p>
+                        <p className="text-xs text-stone-400 truncate">{stop.days} days{stop.notes && ` • ${stop.notes}`}</p>
                       </div>
                       <button
                         type="button"
                         onClick={() => handleRemoveStop(idx)}
-                        className="text-stone-500 hover:text-red-400"
+                        className="text-stone-500 hover:text-red-400 flex-shrink-0"
                       >
                         <Trash2 size={16} />
                       </button>

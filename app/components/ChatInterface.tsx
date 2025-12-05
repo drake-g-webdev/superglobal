@@ -4,7 +4,7 @@ import { useState, useRef, useEffect, useCallback } from 'react';
 import { Send, MapPin, DollarSign, User, Settings, Compass, Calendar, Target, Map as MapIcon, Plus, Check, Loader2, MessageSquare, ChevronLeft, ChevronRight, Calculator, ListChecks, Backpack, CalendarDays, Mountain, Sailboat, Tent, Footprints, X, Menu, ArrowLeft } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import clsx from 'clsx';
-import { useChats, MapPinType, ExtractedLocation, MessageLocations, ExtractedCost, MessageCosts, CostCategory } from '../context/ChatsContext';
+import { useChats, MapPinType, ExtractedLocation, MessageLocations, ExtractedCost, MessageCosts, CostCategory, ExtractedItinerary, MessageItineraries, ItineraryStop } from '../context/ChatsContext';
 import { useProfile } from '../context/ProfileContext';
 import { useTranslations } from '../context/LocaleContext';
 import ChatSidebar from './ChatSidebar';
@@ -19,11 +19,11 @@ import { API_URL } from '../config/api';
 
 // Adventure-themed thinking messages with icons
 const THINKING_MESSAGES = [
-    { text: "Trekking through the jungle for answers...", Icon: Footprints },
-    { text: "Scaling mountain peaks to find the best routes...", Icon: Mountain },
-    { text: "Sailing uncharted waters for hidden gems...", Icon: Sailboat },
-    { text: "Setting up camp to research your destination...", Icon: Tent },
-    { text: "Following ancient trails and local secrets...", Icon: Compass },
+    { text: "Trekking through the jungle...", Icon: Footprints },
+    { text: "Scaling mountain peaks...", Icon: Mountain },
+    { text: "Sailing uncharted waters...", Icon: Sailboat },
+    { text: "Setting up camp...", Icon: Tent },
+    { text: "Following ancient trails...", Icon: Compass },
     { text: "Exploring off the beaten path...", Icon: MapIcon },
 ];
 
@@ -82,7 +82,7 @@ function ThinkingAnimation() {
 }
 
 export default function ChatInterface() {
-    const { activeChat, updateChat, addMessage, addMapPin, addTouristTrap, updateMapView, mergeConversationVariables, setExtractedLocations, setExtractedCosts, addCostItem } = useChats();
+    const { activeChat, updateChat, addMessage, addMapPin, addTouristTrap, updateMapView, mergeConversationVariables, setExtractedLocations, setExtractedCosts, setExtractedItinerary, addCostItem, updateTripContext } = useChats();
     const { profile, isProfileSet } = useProfile();
     const t = useTranslations('chat');
     const tProfile = useTranslations('profile');
@@ -124,6 +124,13 @@ export default function ChatInterface() {
     // Track in-flight cost extraction requests
     const [extractingCosts, setExtractingCosts] = useState<Set<string>>(new Set());
     const costInFlightRef = useRef<Set<string>>(new Set());
+
+    // Track in-flight itinerary extraction requests
+    const [extractingItinerary, setExtractingItinerary] = useState<Set<string>>(new Set());
+    const itineraryInFlightRef = useRef<Set<string>>(new Set());
+
+    // Track if we've added an itinerary to the trip (to show "Added" state)
+    const [addedItineraryFromMessage, setAddedItineraryFromMessage] = useState<number | null>(null);
 
     // Track which costs have been added to budget (by name to avoid duplicates)
     const [addedCosts, setAddedCosts] = useState<Set<string>>(new Set());
@@ -263,7 +270,6 @@ export default function ChatInterface() {
 
     // Extract conversation variables from a message exchange
     const extractConversationVariables = useCallback(async (userMessage: string, aiResponse: string, chatId: string, destination: string) => {
-        const key = `convvars-${chatId}-${Date.now()}`;
         console.log('[ConvVars Extraction] Starting extraction');
 
         try {
@@ -306,6 +312,82 @@ export default function ChatInterface() {
             console.error('[ConvVars Extraction] Failed:', e);
         }
     }, [mergeConversationVariables]);
+
+    // Extract itinerary from a message using AI
+    const extractItineraryFromMessage = useCallback(async (messageContent: string, messageIndex: number, chatId: string, destination: string) => {
+        const key = `itinerary-${chatId}-${messageIndex}`;
+        console.log('[Itinerary Extraction] Starting extraction for key:', key);
+
+        // Check if already in flight
+        if (itineraryInFlightRef.current.has(key)) {
+            console.log('[Itinerary Extraction] Already in-flight, skipping:', key);
+            return;
+        }
+
+        // Mark as in-flight immediately
+        itineraryInFlightRef.current.add(key);
+        setExtractingItinerary(prev => new Set([...prev, key]));
+
+        try {
+            console.log('[Itinerary Extraction] Calling API for:', destination);
+            const response = await fetch(`${API_URL}/api/extract-itinerary`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    response_text: messageContent,
+                    destination: destination,
+                }),
+            });
+
+            if (response.ok) {
+                const data = await response.json();
+                console.log('[Itinerary Extraction] API Response:', data);
+
+                if (data.has_itinerary && data.itinerary && data.itinerary.length >= 2) {
+                    const extractedItinerary: ExtractedItinerary = {
+                        stops: data.itinerary.map((stop: { location: string; days: number; notes?: string; order: number }) => ({
+                            location: stop.location,
+                            days: stop.days,
+                            notes: stop.notes || '',
+                        })),
+                        totalDays: data.total_days,
+                        hasItinerary: true,
+                    };
+
+                    console.log('[Itinerary Extraction] Extracted itinerary:', extractedItinerary.stops.length, 'stops,', extractedItinerary.totalDays, 'days');
+                    setExtractedItinerary(chatId, messageIndex, extractedItinerary);
+                }
+            } else {
+                console.error('[Itinerary Extraction] API error:', response.status, response.statusText);
+            }
+        } catch (e) {
+            console.error('[Itinerary Extraction] Failed:', e);
+            itineraryInFlightRef.current.delete(key);
+        } finally {
+            setExtractingItinerary(prev => {
+                const next = new Set(prev);
+                next.delete(key);
+                return next;
+            });
+        }
+    }, [setExtractedItinerary]);
+
+    // Add extracted itinerary to trip context
+    const addItineraryToTrip = useCallback((messageIndex: number) => {
+        if (!activeChat) return;
+
+        const extractedItinerary = activeChat.extractedItineraries?.[messageIndex];
+        if (!extractedItinerary || !extractedItinerary.hasItinerary) return;
+
+        // Update trip context with the new itinerary
+        updateTripContext(activeChat.id, {
+            itineraryBreakdown: extractedItinerary.stops,
+            tripDurationDays: extractedItinerary.totalDays,
+        });
+
+        setAddedItineraryFromMessage(messageIndex);
+        console.log('[Add Itinerary] Added', extractedItinerary.stops.length, 'stops to trip');
+    }, [activeChat, updateTripContext]);
 
     // No auto-extraction effect - we trigger extraction directly after receiving a response
 
@@ -655,6 +737,50 @@ export default function ChatInterface() {
                         {isExtracting ? tMap('findingLocations') : 'Finding costs...'}
                     </div>
                 )}
+                {/* Show extracted itinerary with "Use This Itinerary" button */}
+                {activeChat?.extractedItineraries?.[messageIndex]?.hasItinerary && (
+                    <div className="mt-3 p-3 bg-gradient-to-r from-orange-900/30 to-amber-900/20 border border-orange-500/30 rounded-lg">
+                        <div className="flex items-center justify-between mb-2">
+                            <div className="flex items-center gap-2">
+                                <Calendar size={16} className="text-orange-400" />
+                                <span className="text-sm font-semibold text-orange-300">
+                                    Itinerary Detected ({activeChat.extractedItineraries[messageIndex].totalDays} days)
+                                </span>
+                            </div>
+                            {addedItineraryFromMessage === messageIndex ? (
+                                <span className="flex items-center gap-1 text-xs bg-green-600/30 text-green-400 px-2 py-1 rounded">
+                                    <Check size={12} />
+                                    Added to Trip
+                                </span>
+                            ) : (
+                                <button
+                                    onClick={() => addItineraryToTrip(messageIndex)}
+                                    className="flex items-center gap-1 text-xs bg-orange-600 hover:bg-orange-500 text-white px-3 py-1.5 rounded-lg transition-colors font-medium"
+                                >
+                                    <Plus size={12} />
+                                    Use This Itinerary
+                                </button>
+                            )}
+                        </div>
+                        <div className="flex flex-wrap gap-1.5">
+                            {activeChat.extractedItineraries[messageIndex].stops.slice(0, 6).map((stop, idx) => (
+                                <span
+                                    key={idx}
+                                    className="text-[11px] bg-stone-800/80 text-stone-300 px-2 py-0.5 rounded flex items-center gap-1"
+                                >
+                                    <MapPin size={10} className="text-orange-400" />
+                                    {stop.location}
+                                    <span className="text-stone-500">({stop.days}d)</span>
+                                </span>
+                            ))}
+                            {activeChat.extractedItineraries[messageIndex].stops.length > 6 && (
+                                <span className="text-[11px] text-stone-500 px-2 py-0.5">
+                                    +{activeChat.extractedItineraries[messageIndex].stops.length - 6} more
+                                </span>
+                            )}
+                        </div>
+                    </div>
+                )}
             </>
         );
     };
@@ -766,12 +892,16 @@ export default function ChatInterface() {
             // Add the response to messages
             addMessage(chatId, { role: 'assistant', content: fullResponse });
 
-            // Extract locations, costs, and conversation variables
+            // Extract locations, costs, itinerary, and conversation variables
             const assistantMsgIdx = activeChat.messages.length + 1;
             console.log('[Extraction] Extracting from message at index:', assistantMsgIdx);
             if (fullResponse.length > 100) {
                 extractLocationsFromMessage(fullResponse, assistantMsgIdx, chatId, destination);
                 extractCostsFromMessage(fullResponse, assistantMsgIdx, chatId, destination);
+                // Extract itinerary if the response looks like it might contain one
+                if (fullResponse.toLowerCase().includes('day') && (fullResponse.includes(':') || fullResponse.includes('-'))) {
+                    extractItineraryFromMessage(fullResponse, assistantMsgIdx, chatId, destination);
+                }
                 // Extract conversation variables from the exchange
                 extractConversationVariables(userMsgContent, fullResponse, chatId, destination);
             }
@@ -854,8 +984,7 @@ export default function ChatInterface() {
                         "flex flex-col bg-stone-800 transition-all duration-300",
                         // On mobile: always full width (panel shows as overlay)
                         // On md+: half width when panel expanded, full width when collapsed
-                        "w-full md:w-auto",
-                        isMapExpanded ? "md:w-1/2" : "md:flex-1"
+                        isMapExpanded ? "w-full md:w-1/2" : "flex-1"
                     )}>
                         {/* Chat Header */}
                         <div className="flex items-center justify-between px-4 py-2 border-b border-stone-700 bg-stone-900">

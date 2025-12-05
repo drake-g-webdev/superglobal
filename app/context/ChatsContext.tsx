@@ -94,6 +94,16 @@ export interface ExtractedCost {
 // Maps message index -> extracted costs for that message
 export type MessageCosts = Record<number, ExtractedCost[]>;
 
+// Extracted itinerary from AI responses (for "Use This Itinerary" buttons)
+export interface ExtractedItinerary {
+  stops: ItineraryStop[];
+  totalDays: number;
+  hasItinerary: boolean;
+}
+
+// Maps message index -> extracted itinerary for that message
+export type MessageItineraries = Record<number, ExtractedItinerary>;
+
 export interface CostItem {
   id: string;
   category: CostCategory;
@@ -329,6 +339,9 @@ export interface Chat {
   // Extracted costs from AI responses (persisted for "Add to Budget" buttons)
   extractedCosts: MessageCosts;
 
+  // Extracted itineraries from AI responses (persisted for "Use This Itinerary" buttons)
+  extractedItineraries: MessageItineraries;
+
   // Costs
   tripCosts: TripCosts;
   touristTraps: TouristTrap[];
@@ -365,6 +378,8 @@ interface ChatsContextType {
   setExtractedLocations: (chatId: string, messageIndex: number, locations: ExtractedLocation[]) => void;
   // Extracted costs functions (for "Add to Budget" buttons)
   setExtractedCosts: (chatId: string, messageIndex: number, costs: ExtractedCost[]) => void;
+  // Extracted itinerary functions (for "Use This Itinerary" buttons)
+  setExtractedItinerary: (chatId: string, messageIndex: number, itinerary: ExtractedItinerary) => void;
   // Cost functions
   addCostItem: (chatId: string, item: Omit<CostItem, 'id'>) => void;
   addCostItems: (chatId: string, items: Omit<CostItem, 'id'>[]) => void;
@@ -453,6 +468,7 @@ function createNewChat(title?: string): Chat {
     mapZoom: undefined,
     extractedLocations: {},
     extractedCosts: {},
+    extractedItineraries: {},
     tripCosts: { ...defaultTripCosts },
     touristTraps: [],
     bucketList: [],
@@ -498,6 +514,7 @@ export function ChatsProvider({ children }: { children: ReactNode }) {
             mapZoom: chat.mapZoom as number | undefined,
             extractedLocations: (chat.extractedLocations as MessageLocations) || {},
             extractedCosts: (chat.extractedCosts as MessageCosts) || {},
+            extractedItineraries: (chat.extractedItineraries as MessageItineraries) || {},
             tripCosts: (chat.tripCosts as TripCosts) || { ...defaultTripCosts },
             touristTraps: (chat.touristTraps as TouristTrap[]) || [],
             bucketList: (chat.bucketList as BucketListItem[]) || [],
@@ -847,6 +864,21 @@ export function ChatsProvider({ children }: { children: ReactNode }) {
             extractedCosts: {
               ...chat.extractedCosts,
               [messageIndex]: costs,
+            },
+            updatedAt: Date.now(),
+          }
+        : chat
+    ));
+  };
+
+  const setExtractedItinerary = (chatId: string, messageIndex: number, itinerary: ExtractedItinerary) => {
+    setChats(prev => prev.map(chat =>
+      chat.id === chatId
+        ? {
+            ...chat,
+            extractedItineraries: {
+              ...chat.extractedItineraries,
+              [messageIndex]: itinerary,
             },
             updatedAt: Date.now(),
           }
@@ -1321,6 +1353,7 @@ export function ChatsProvider({ children }: { children: ReactNode }) {
       updateMapView,
       setExtractedLocations,
       setExtractedCosts,
+      setExtractedItinerary,
       addCostItem,
       addCostItems,
       updateCostItem,

@@ -17,7 +17,8 @@ export default function LandingPage() {
             <Globe size={24} className="text-orange-500" />
             <span className="font-semibold text-lg">superglobal.travel</span>
           </div>
-          <div className="flex items-center gap-4">
+          {/* Hide nav buttons on mobile - hero CTA buttons are visible */}
+          <div className="hidden md:flex items-center gap-4">
             <Link
               href="/auth/login"
               className="text-stone-300 hover:text-white transition-colors"

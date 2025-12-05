@@ -2039,6 +2039,128 @@ class ExtractConversationVarsResponse(BaseModel):
     has_new_info: bool = False
 
 
+# ============================================
+# ITINERARY EXTRACTION FROM AI RESPONSES
+# ============================================
+
+class ExtractedItineraryStop(BaseModel):
+    location: str
+    days: int
+    notes: str = ""
+    order: int = 0
+
+
+class ExtractItineraryRequest(BaseModel):
+    response_text: str
+    destination: str
+
+
+class ExtractItineraryResponse(BaseModel):
+    itinerary: list[ExtractedItineraryStop]
+    total_days: int
+    has_itinerary: bool = False
+
+
+ITINERARY_EXTRACTION_PROMPT = """Analyze this travel response and extract any itinerary/travel plan mentioned.
+
+DESTINATION: {destination}
+
+TEXT TO ANALYZE:
+{text}
+
+Look for patterns like:
+- "Days 1-3: Location" or "Day 1-3: Location"
+- "Location (X days)" or "Location: X days"
+- "Spend X days in Location"
+- "X nights in Location"
+- Numbered day-by-day itineraries
+- City-to-city travel plans with durations
+
+For each stop found, extract:
+- location: The city, town, or area name (just the place name, not "Days 1-3:")
+- days: Number of days to spend there
+- notes: Any important notes about what to do there (keep brief, max 50 words)
+- order: The sequence order (0-indexed)
+
+RULES:
+1. Only extract if there's a clear itinerary with multiple stops and day counts
+2. Don't extract single location mentions without day counts
+3. Calculate days from ranges: "Days 1-3" = 3 days, "Days 4-6" = 3 days
+4. Be precise with location names - use the actual place mentioned
+5. For notes, focus on key activities, highlights, or travel tips mentioned for that stop
+6. Return empty list if no clear itinerary is present
+
+Respond with ONLY valid JSON:
+{{
+  "itinerary": [
+    {{"location": "Islamabad", "days": 3, "notes": "Acclimatize, explore Faisal Mosque and Margalla Hills", "order": 0}},
+    {{"location": "Naran", "days": 3, "notes": "Lake Saif-ul-Mulook, stunning mountain scenery", "order": 1}},
+    {{"location": "Hunza Valley", "days": 5, "notes": "Karimabad, Eagle's Nest viewpoint, Attabad Lake", "order": 2}}
+  ],
+  "total_days": 11,
+  "has_itinerary": true
+}}
+
+If no itinerary found, respond with:
+{{
+  "itinerary": [],
+  "total_days": 0,
+  "has_itinerary": false
+}}
+"""
+
+
+@app.post("/api/extract-itinerary", response_model=ExtractItineraryResponse)
+async def extract_itinerary(request: ExtractItineraryRequest):
+    """Extract itinerary stops from AI response text."""
+    try:
+        extraction_llm = ChatOpenAI(model="gpt-4o-mini", temperature=0)
+
+        prompt = ITINERARY_EXTRACTION_PROMPT.format(
+            destination=request.destination,
+            text=request.response_text
+        )
+
+        result = extraction_llm.invoke(prompt)
+
+        content = result.content.strip()
+        # Handle markdown code blocks
+        if content.startswith("```"):
+            content = content.split("```")[1]
+            if content.startswith("json"):
+                content = content[4:]
+        content = content.strip()
+
+        data = json.loads(content)
+
+        itinerary = []
+        for idx, stop in enumerate(data.get("itinerary", [])):
+            if isinstance(stop, dict) and "location" in stop and "days" in stop:
+                itinerary.append(ExtractedItineraryStop(
+                    location=stop["location"],
+                    days=int(stop.get("days", 1)),
+                    notes=stop.get("notes", ""),
+                    order=stop.get("order", idx)
+                ))
+
+        total_days = sum(stop.days for stop in itinerary)
+        has_itinerary = len(itinerary) >= 2  # Need at least 2 stops for a real itinerary
+
+        logging.info(f"[Itinerary Extraction] Found {len(itinerary)} stops, {total_days} total days")
+        return ExtractItineraryResponse(
+            itinerary=itinerary,
+            total_days=total_days,
+            has_itinerary=has_itinerary
+        )
+
+    except json.JSONDecodeError as e:
+        logging.error(f"[Itinerary Extraction] Failed to parse response: {e}")
+        return ExtractItineraryResponse(itinerary=[], total_days=0, has_itinerary=False)
+    except Exception as e:
+        logging.error(f"[Itinerary Extraction] Failed: {e}")
+        return ExtractItineraryResponse(itinerary=[], total_days=0, has_itinerary=False)
+
+
 CONVERSATION_VARS_PROMPT = """Analyze this travel conversation exchange and extract key variables that should be remembered for personalizing future responses.
 
 DESTINATION: {destination}

@@ -826,23 +826,33 @@ export default function ChatInterface() {
 
                         {/* Input Area */}
                         <div className="p-3 bg-stone-900 border-t border-stone-700">
-                            <div className="flex gap-2">
-                                <input
-                                    type="text"
-                                    value={input}
-                                    onChange={(e) => setInput(e.target.value)}
-                                    onKeyDown={(e) => e.key === 'Enter' && sendMessage()}
-                                    placeholder={t('typeMessage')}
-                                    className="flex-1 bg-stone-800 text-stone-100 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500 transition-all"
-                                />
+                            {activeChat?.tripSetupComplete ? (
+                                <div className="flex gap-2">
+                                    <input
+                                        type="text"
+                                        value={input}
+                                        onChange={(e) => setInput(e.target.value)}
+                                        onKeyDown={(e) => e.key === 'Enter' && sendMessage()}
+                                        placeholder={t('typeMessage')}
+                                        className="flex-1 bg-stone-800 text-stone-100 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500 transition-all"
+                                    />
+                                    <button
+                                        onClick={sendMessage}
+                                        disabled={isLoading}
+                                        className="bg-orange-600 hover:bg-orange-500 text-white p-2.5 rounded-xl transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                                    >
+                                        <Send size={18} />
+                                    </button>
+                                </div>
+                            ) : (
                                 <button
-                                    onClick={sendMessage}
-                                    disabled={isLoading}
-                                    className="bg-orange-600 hover:bg-orange-500 text-white p-2.5 rounded-xl transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                                    onClick={() => setIsTripSetupOpen(true)}
+                                    className="w-full bg-orange-600 hover:bg-orange-500 text-white py-3 rounded-xl font-medium transition-colors flex items-center justify-center gap-2"
                                 >
-                                    <Send size={18} />
+                                    <Compass size={18} />
+                                    {tTripSetup('title')}
                                 </button>
-                            </div>
+                            )}
                         </div>
                     </div>
 

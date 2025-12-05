@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from 'react';
-import { X, Plus, Calendar, DollarSign, Compass, MapPin, Target, Shield, Camera, ChevronLeft, ChevronRight, Check, Trash2 } from 'lucide-react';
+import { X, Plus, Calendar, DollarSign, Compass, ChevronLeft, ChevronRight, Check, Trash2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import clsx from 'clsx';
 import { useChats, TripContext, TransportationStyle, AccommodationStyle, TripGoal, ItineraryStop } from '../context/ChatsContext';
@@ -128,7 +128,7 @@ export default function TripSetupWizard({ isOpen, onClose, chatId }: TripSetupWi
   const tProfile = useTranslations('profile');
 
   const [step, setStep] = useState(0);
-  const totalSteps = 5;
+  const totalSteps = 4;
 
   // Local state for form
   const [destination, setDestination] = useState('');
@@ -147,21 +147,6 @@ export default function TripSetupWizard({ isOpen, onClose, chatId }: TripSetupWi
   const [customGoals, setCustomGoals] = useState<string[]>([]);
   const [newCustomGoal, setNewCustomGoal] = useState('');
 
-  // Safety overrides (use profile defaults initially)
-  const [walkAtNightOverride, setWalkAtNightOverride] = useState<boolean | undefined>(undefined);
-  const [experiencedMotosOverride, setExperiencedMotosOverride] = useState<boolean | undefined>(undefined);
-  const [openToCouchsurfingOverride, setOpenToCouchsurfingOverride] = useState<boolean | undefined>(undefined);
-
-  // Content overrides
-  const [instagramFriendlyOverride, setInstagramFriendlyOverride] = useState<boolean | undefined>(undefined);
-  const [hiddenSpotsOverride, setHiddenSpotsOverride] = useState<boolean | undefined>(undefined);
-  const [videoFocusOverride, setVideoFocusOverride] = useState<boolean | undefined>(undefined);
-
-  // Visa
-  const [needsVisa, setNeedsVisa] = useState(false);
-  const [visaOnArrival, setVisaOnArrival] = useState(false);
-  const [visaNotes, setVisaNotes] = useState('');
-
   // Load existing trip context when opening
   useEffect(() => {
     if (isOpen && activeChat) {
@@ -177,15 +162,6 @@ export default function TripSetupWizard({ isOpen, onClose, chatId }: TripSetupWi
       setPreferredLanguage(ctx.preferredLanguage || 'English');
       setTripGoals(ctx.tripGoals || []);
       setCustomGoals(ctx.customGoals || []);
-      setWalkAtNightOverride(ctx.walkAtNightOverride);
-      setExperiencedMotosOverride(ctx.experiencedMotosOverride);
-      setOpenToCouchsurfingOverride(ctx.openToCouchsurfingOverride);
-      setInstagramFriendlyOverride(ctx.instagramFriendlyOverride);
-      setHiddenSpotsOverride(ctx.hiddenSpotsOverride);
-      setVideoFocusOverride(ctx.videoFocusOverride);
-      setNeedsVisa(ctx.needsVisa || false);
-      setVisaOnArrival(ctx.visaOnArrival || false);
-      setVisaNotes(ctx.visaNotes || '');
       setStep(0);
     }
   }, [isOpen, activeChat]);
@@ -243,15 +219,6 @@ export default function TripSetupWizard({ isOpen, onClose, chatId }: TripSetupWi
       preferredLanguage,
       tripGoals,
       customGoals,
-      walkAtNightOverride,
-      experiencedMotosOverride,
-      openToCouchsurfingOverride,
-      instagramFriendlyOverride,
-      hiddenSpotsOverride,
-      videoFocusOverride,
-      needsVisa,
-      visaOnArrival,
-      visaNotes,
     });
 
     markTripSetupComplete(chatId);
@@ -554,123 +521,6 @@ export default function TripSetupWizard({ isOpen, onClose, chatId }: TripSetupWi
                     </button>
                   </span>
                 ))}
-              </div>
-            </div>
-          </div>
-        );
-
-      case 4:
-        return (
-          <div className="space-y-6">
-            <div className="text-center">
-              <h3 className="text-xl font-bold text-orange-500 mb-2">{t('tripOverrides')}</h3>
-              <p className="text-sm text-stone-400">{t('overrideProfile')}</p>
-            </div>
-
-            <div className="space-y-4">
-              <div className="bg-stone-800/50 rounded-lg p-4 space-y-3">
-                <h4 className="text-sm font-bold flex items-center gap-2"><Shield size={14} className="text-orange-500" /> {t('safetyOverrides')}</h4>
-                <p className="text-xs text-stone-500">{t('useProfileDefaults')}</p>
-
-                <label className="flex items-center gap-3 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={walkAtNightOverride === true}
-                    onChange={(e) => setWalkAtNightOverride(e.target.checked ? true : undefined)}
-                    className="w-4 h-4 accent-orange-500"
-                  />
-                  <span className="text-sm">{t('overrideNightWalking')}</span>
-                </label>
-
-                <label className="flex items-center gap-3 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={experiencedMotosOverride === true}
-                    onChange={(e) => setExperiencedMotosOverride(e.target.checked ? true : undefined)}
-                    className="w-4 h-4 accent-orange-500"
-                  />
-                  <span className="text-sm">{t('overrideMotorbikes')}</span>
-                </label>
-
-                <label className="flex items-center gap-3 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={openToCouchsurfingOverride === true}
-                    onChange={(e) => setOpenToCouchsurfingOverride(e.target.checked ? true : undefined)}
-                    className="w-4 h-4 accent-orange-500"
-                  />
-                  <span className="text-sm">{t('overrideCouchsurfing')}</span>
-                </label>
-              </div>
-
-              <div className="bg-stone-800/50 rounded-lg p-4 space-y-3">
-                <h4 className="text-sm font-bold flex items-center gap-2"><Camera size={14} className="text-orange-500" /> {t('contentOverrides')}</h4>
-
-                <label className="flex items-center gap-3 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={instagramFriendlyOverride === true}
-                    onChange={(e) => setInstagramFriendlyOverride(e.target.checked ? true : undefined)}
-                    className="w-4 h-4 accent-orange-500"
-                  />
-                  <span className="text-sm">{tProfile('prioritizeInstagram')}</span>
-                </label>
-
-                <label className="flex items-center gap-3 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={hiddenSpotsOverride === true}
-                    onChange={(e) => setHiddenSpotsOverride(e.target.checked ? true : undefined)}
-                    className="w-4 h-4 accent-orange-500"
-                  />
-                  <span className="text-sm">{tProfile('showHiddenGems')}</span>
-                </label>
-
-                <label className="flex items-center gap-3 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={videoFocusOverride === true}
-                    onChange={(e) => setVideoFocusOverride(e.target.checked ? true : undefined)}
-                    className="w-4 h-4 accent-orange-500"
-                  />
-                  <span className="text-sm">{tProfile('focusVideo')}</span>
-                </label>
-              </div>
-
-              <div className="bg-stone-800/50 rounded-lg p-4 space-y-3">
-                <h4 className="text-sm font-bold flex items-center gap-2"><MapPin size={14} className="text-orange-500" /> {t('visaInfo')}</h4>
-
-                <label className="flex items-center gap-3 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={needsVisa}
-                    onChange={(e) => setNeedsVisa(e.target.checked)}
-                    className="w-4 h-4 accent-orange-500"
-                  />
-                  <span className="text-sm">{t('needsVisa')}</span>
-                </label>
-
-                {needsVisa && (
-                  <>
-                    <label className="flex items-center gap-3 cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={visaOnArrival}
-                        onChange={(e) => setVisaOnArrival(e.target.checked)}
-                        className="w-4 h-4 accent-orange-500"
-                      />
-                      <span className="text-sm">{t('visaOnArrival')}</span>
-                    </label>
-
-                    <input
-                      type="text"
-                      value={visaNotes}
-                      onChange={(e) => setVisaNotes(e.target.value)}
-                      placeholder={t('visaNotesPlaceholder')}
-                      className="w-full bg-stone-800 border border-stone-700 rounded px-3 py-2 text-sm focus:outline-none focus:border-orange-500"
-                    />
-                  </>
-                )}
               </div>
             </div>
           </div>

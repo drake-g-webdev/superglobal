@@ -498,8 +498,8 @@ export default function ProfilePanel({ isOpen, onClose }: ProfilePanelProps) {
                     <EnumSelector
                       value={profile.comfortThreshold || 'hostels'}
                       onChange={(v) => updateProfile({ comfortThreshold: v })}
-                      options={['hotels', 'hostels', 'tents', 'hammocks', 'van', 'couchsurfing']}
-                      labels={{ hotels: t('hotels'), hostels: t('hostels'), tents: t('tents'), hammocks: t('hammocks'), van: t('van'), couchsurfing: t('couchsurfing') }}
+                      options={['hotels', 'hostels', 'tents', 'van', 'couchsurfing']}
+                      labels={{ hotels: t('hotels'), hostels: t('hostels'), tents: t('tents'), van: t('van'), couchsurfing: t('couchsurfing') }}
                     />
                   </div>
 

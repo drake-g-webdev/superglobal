@@ -7,7 +7,7 @@ import { createContext, useContext, useState, useEffect, ReactNode } from 'react
 // ============================================
 
 export type RiskTolerance = 'low' | 'medium' | 'high';
-export type ComfortThreshold = 'hotels' | 'hostels' | 'tents' | 'hammocks' | 'van' | 'couchsurfing';
+export type ComfortThreshold = 'hotels' | 'hostels' | 'tents' | 'van' | 'couchsurfing';
 export type HygieneThreshold = 'daily' | 'every_3_days' | 'broke_backpacker_mode';
 export type FoodPreference = 'street_food' | 'restaurants' | 'cooking' | 'mixed';
 export type TravelPace = 'slow' | 'moderate' | 'fast';

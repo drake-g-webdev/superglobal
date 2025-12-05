@@ -2,15 +2,33 @@
 
 import { useState } from 'react';
 import {
-  CalendarDays, Sparkles, RefreshCw, Star, MapPin, Ticket, Heart,
+  CalendarDays, Sparkles, RefreshCw, MapPin, Ticket, Heart,
   Music, PartyPopper, Landmark, ShoppingBag, Trophy, Flag, HelpCircle,
   Loader2, AlertTriangle, ChevronDown, ChevronUp, ListChecks, Check
 } from 'lucide-react';
 import clsx from 'clsx';
-import { useChats, EventType, TripEvent, CostCategory } from '../context/ChatsContext';
+import { useChats, EventType, TripEvent, CostCategory, MapPinType } from '../context/ChatsContext';
 import { useProfile } from '../context/ProfileContext';
 import { useTranslations } from '../context/LocaleContext';
 import { API_URL } from '../config/api';
+
+// Map event type to map pin type
+const eventTypeToMapPinType = (eventType: EventType): MapPinType => {
+  switch (eventType) {
+    case 'festival':
+    case 'concert':
+      return 'activity';
+    case 'market':
+      return 'restaurant'; // Markets often have food
+    case 'cultural':
+    case 'holiday':
+      return 'historic';
+    case 'sports':
+      return 'activity';
+    default:
+      return 'other';
+  }
+};
 
 const EVENT_TYPE_CONFIG: Record<EventType, { label: string; icon: React.ComponentType<{ size?: number; className?: string }>; color: string }> = {
   festival: { label: 'Festival', icon: PartyPopper, color: '#f97316' },
@@ -22,24 +40,8 @@ const EVENT_TYPE_CONFIG: Record<EventType, { label: string; icon: React.Componen
   other: { label: 'Other', icon: HelpCircle, color: '#6b7280' },
 };
 
-function StarRating({ rating }: { rating: number }) {
-  return (
-    <div className="flex items-center gap-0.5">
-      {[1, 2, 3, 4, 5].map((star) => (
-        <Star
-          key={star}
-          size={12}
-          className={clsx(
-            star <= rating ? 'text-yellow-400 fill-yellow-400' : 'text-stone-600'
-          )}
-        />
-      ))}
-    </div>
-  );
-}
-
 export default function EventsPanel() {
-  const { activeChat, setEvents, addEvents, toggleEventInterest, clearEvents, addBucketListItem, addCostItem } = useChats();
+  const { activeChat, setEvents, addEvents, toggleEventInterest, clearEvents, addBucketListItem, addCostItem, addMapPin } = useChats();
   const { profile, isProfileSet } = useProfile();
   const t = useTranslations('events');
   const [isLoading, setIsLoading] = useState(false);
@@ -85,8 +87,8 @@ export default function EventsPanel() {
     }
   };
 
-  // Add event to bucket list and budget
-  const handleAddToBucketList = (event: TripEvent) => {
+  // Add event to bucket list, budget, and map
+  const handleAddToBucketList = async (event: TripEvent) => {
     if (!activeChat) return;
 
     // Add to bucket list
@@ -116,6 +118,36 @@ export default function EventsPanel() {
           : `${event.budgetTip || 'Estimate - update with actual cost'}`,
       isEstimate,
     });
+
+    // Add map pin - geocode the event location
+    try {
+      const geocodeContext = activeChat.destination || event.location;
+      const geocodeResponse = await fetch(`${API_URL}/api/geocode`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          query: event.location,
+          context: geocodeContext,
+        }),
+      });
+
+      if (geocodeResponse.ok) {
+        const geocodeData = await geocodeResponse.json();
+        if (geocodeData.success && geocodeData.coordinates) {
+          const coords = geocodeData.coordinates as [number, number];
+          addMapPin(activeChat.id, {
+            name: event.name,
+            type: eventTypeToMapPinType(event.eventType),
+            coordinates: coords,
+            description: event.description,
+            sourceMessageIndex: -1, // Not from a chat message
+          });
+        }
+      }
+    } catch (err) {
+      console.error('Failed to geocode event location:', err);
+      // Don't block adding to bucket list if geocoding fails
+    }
   };
 
   const eventsData = activeChat?.eventsData;
@@ -130,8 +162,8 @@ export default function EventsPanel() {
     return event.eventType === filter;
   });
 
-  // Sort by backpacker rating
-  const sortedEvents = [...filteredEvents].sort((a, b) => b.backpackerRating - a.backpackerRating);
+  // Just use filtered events (no sorting by rating)
+  const sortedEvents = filteredEvents;
 
   const handleDiscoverEvents = async () => {
     if (!activeChat) return;
@@ -462,19 +494,13 @@ export default function EventsPanel() {
                         {event.description}
                       </p>
 
-                      {/* Budget Tip & Rating */}
-                      <div className="flex items-center justify-between mt-3">
-                        {event.budgetTip && (
-                          <div className="flex items-center gap-1.5 text-xs text-green-400">
-                            <Ticket size={12} />
-                            <span>{event.budgetTip}</span>
-                          </div>
-                        )}
-                        <div className="flex items-center gap-1.5 ml-auto">
-                          <span className="text-xs text-stone-500">Backpacker rating:</span>
-                          <StarRating rating={event.backpackerRating} />
+                      {/* Budget Tip */}
+                      {event.budgetTip && (
+                        <div className="flex items-center gap-1.5 text-xs text-green-400 mt-3">
+                          <Ticket size={12} />
+                          <span>{event.budgetTip}</span>
                         </div>
-                      </div>
+                      )}
                     </div>
                   </div>
                 </div>

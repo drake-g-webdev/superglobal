@@ -82,7 +82,7 @@ export const authOptions: NextAuthOptions = {
     async jwt({ token, user, trigger, session }) {
       if (user) {
         token.id = user.id;
-        token.profileComplete = (user as any).profileComplete;
+        token.profileComplete = user.profileComplete;
       }
       // Handle profile completion update
       if (trigger === 'update' && session?.profileComplete !== undefined) {
@@ -97,8 +97,8 @@ export const authOptions: NextAuthOptions = {
     },
     async session({ session, token }) {
       if (session.user) {
-        (session.user as any).id = token.id;
-        (session.user as any).profileComplete = token.profileComplete;
+        session.user.id = token.id;
+        session.user.profileComplete = token.profileComplete;
       }
       return session;
     },

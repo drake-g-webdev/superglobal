@@ -78,7 +78,7 @@ export default function PackingListPanel() {
           trip_duration: activeChat.tripContext?.tripDurationDays || 14,
           bucket_list: activeChat.bucketList?.map(item => item.text) || [],
           activities: activeChat.tripContext?.tripGoals || [],
-          accommodation_style: activeChat.tripContext?.accommodationStyle || 'hostel_dorm',
+          accommodation_style: activeChat.tripContext?.accommodationStyles?.[0] || 'hostel_dorm',
           pack_weight: isProfileSet ? profile.packWeight : 'moderate',
           electronics_tolerance: isProfileSet ? profile.electronicsTolerance : 'medium',
           hygiene_threshold: isProfileSet ? profile.hygieneThreshold : 'every_3_days',

@@ -11,14 +11,9 @@ import { useChats, CostCategory, CostItem, TouristTrap } from '../context/ChatsC
 import { useTranslations } from '../context/LocaleContext';
 import { Users } from 'lucide-react';
 
-// Categories where cost is per-person (tickets, flights, activities, food)
-// NOTE: Accommodation is NOT included - shared costs like apartment rentals should not be multiplied
-const PER_PERSON_CATEGORIES: CostCategory[] = [
-  'transport_flights',
-  'activities',
-  'food',
-  'visa_border',
-];
+// NOTE: Per-person cost multiplication is handled by the AI extraction API,
+// which already multiplies per-person items (activities, tours, etc.) by traveler count.
+// The dashboard should NOT multiply again - just show amount × quantity.
 
 const CATEGORY_CONFIG: Record<CostCategory, { label: string; icon: React.ComponentType<{ size?: number; className?: string }>; color: string }> = {
   accommodation: { label: 'Accommodation', icon: Bed, color: '#f97316' },
@@ -70,27 +65,22 @@ export default function CostDashboard() {
   const [formState, setFormState] = useState<AddCostFormState>(defaultFormState);
   const [expandedCategories, setExpandedCategories] = useState<Set<CostCategory>>(new Set(CATEGORY_ORDER));
   const [showTraps, setShowTraps] = useState(true);
-  const [applyTravelerMultiplier, setApplyTravelerMultiplier] = useState(true);
 
   const costs = activeChat?.tripCosts?.items || [];
   const touristTraps = activeChat?.touristTraps || [];
   const tripDays = activeChat?.tripContext?.tripDurationDays || 14;
 
-  // Get traveler count from trip context (per-trip setting)
+  // Get traveler count from trip context (for display purposes)
   const travelerCount = activeChat?.tripContext?.travelerCount || 1;
   const travelerLabel = travelerCount === 1 ? 'Solo' : travelerCount === 2 ? 'Couple' : `Group of ${travelerCount}`;
 
-  // Helper to calculate item cost with traveler multiplier
+  // Simple cost calculation - just amount × quantity
+  // The AI extraction API already handles per-person multiplication for activities/tours
   const getItemCost = (item: CostItem) => {
-    const baseCost = item.amount * item.quantity;
-    // Apply multiplier only to per-person categories and if toggle is on
-    if (applyTravelerMultiplier && PER_PERSON_CATEGORIES.includes(item.category) && travelerCount > 1) {
-      return baseCost * travelerCount;
-    }
-    return baseCost;
+    return item.amount * item.quantity;
   };
 
-  // Calculate totals by category (with traveler multiplier)
+  // Calculate totals by category
   const categoryTotals = useMemo(() => {
     const totals: Record<CostCategory, number> = {} as Record<CostCategory, number>;
     CATEGORY_ORDER.forEach(cat => totals[cat] = 0);
@@ -100,7 +90,7 @@ export default function CostDashboard() {
     });
 
     return totals;
-  }, [costs, applyTravelerMultiplier, travelerCount]);
+  }, [costs]);
 
   // Calculate grand total
   const grandTotal = useMemo(() => {
@@ -215,30 +205,19 @@ export default function CostDashboard() {
           </button>
         </div>
 
-        {/* Traveler count indicator */}
+        {/* Traveler count indicator (informational only) */}
         {travelerCount > 1 && (
-          <button
-            onClick={() => setApplyTravelerMultiplier(!applyTravelerMultiplier)}
-            className={clsx(
-              "mb-2 w-full flex items-center justify-center gap-2 py-1.5 rounded-lg text-xs transition-colors",
-              applyTravelerMultiplier
-                ? "bg-blue-600/20 border border-blue-500/30 text-blue-400"
-                : "bg-stone-700/50 border border-stone-600 text-stone-400"
-            )}
-          >
+          <div className="mb-2 w-full flex items-center justify-center gap-2 py-1.5 rounded-lg text-xs bg-blue-600/20 border border-blue-500/30 text-blue-400">
             <Users size={12} />
-            {applyTravelerMultiplier
-              ? `${travelerLabel} (${travelerCount}x for tickets/flights/food)`
-              : `${travelerLabel} mode off - showing per-person`
-            }
-          </button>
+            {travelerLabel} - per-person costs already included in quantity
+          </div>
         )}
 
         {/* Total Display */}
         <div className="bg-gradient-to-r from-orange-600/20 to-orange-500/10 rounded-lg p-3 border border-orange-500/30">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-xs text-stone-400">{t('totalSpent')}{travelerCount > 1 && applyTravelerMultiplier ? ` (${travelerCount} travelers)` : ''}</p>
+              <p className="text-xs text-stone-400">{t('totalSpent')}{travelerCount > 1 ? ` (${travelerCount} travelers)` : ''}</p>
               <p className="text-2xl font-bold text-white">${grandTotal.toFixed(0)}</p>
             </div>
             <div className="text-right">
@@ -468,9 +447,6 @@ export default function CostDashboard() {
                             <p className="text-sm truncate">{item.name}</p>
                             <p className="text-xs text-stone-500">
                               ${item.amount} × {item.quantity} {item.unit}
-                              {applyTravelerMultiplier && PER_PERSON_CATEGORIES.includes(item.category) && travelerCount > 1 && (
-                                <span className="ml-1 text-blue-400">× {travelerCount}</span>
-                              )}
                               {item.isEstimate && <span className="ml-1 text-orange-400">(est)</span>}
                             </p>
                           </div>

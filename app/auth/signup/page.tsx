@@ -3,9 +3,9 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import Image from 'next/image';
 import { Mail, Lock, User, MapPin, Loader2, AlertCircle, ChevronRight, ChevronLeft, Key, Globe, Info } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
+import SpinningGlobe from '../../components/SpinningGlobe';
 import { useProfile, UserProfile } from '../../context/ProfileContext';
 import { useTranslations, useLocale } from '../../context/LocaleContext';
 import clsx from 'clsx';
@@ -181,7 +181,7 @@ export default function SignupPage() {
       await markProfileComplete();
 
       // Redirect to main app
-      router.push('/');
+      router.push('/app');
     } catch (err) {
       setError('An unexpected error occurred');
     } finally {
@@ -195,9 +195,9 @@ export default function SignupPage() {
         {/* Logo */}
         <div className="text-center mb-8">
           <div className="inline-flex items-center justify-center w-20 h-20 mb-4">
-            <Image src="/logo.png" alt="superglobal" width={80} height={80} className="rounded-full" />
+            <SpinningGlobe size={80} />
           </div>
-          <h1 className="text-2xl font-bold text-white">superglobal</h1>
+          <h1 className="text-2xl font-bold text-white font-mono">superglobal.travel</h1>
           <p className="text-stone-400 mt-2">Create your account</p>
         </div>
 

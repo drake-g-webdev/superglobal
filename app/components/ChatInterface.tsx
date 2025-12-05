@@ -23,7 +23,7 @@ const THINKING_MESSAGES = [
     { text: "Sailing uncharted waters for hidden gems...", Icon: Sailboat },
     { text: "Setting up camp to research your destination...", Icon: Tent },
     { text: "Following ancient trails and local secrets...", Icon: Compass },
-    { text: "Exploring off the beaten path for you...", Icon: MapIcon },
+    { text: "Exploring off the beaten path...", Icon: MapIcon },
 ];
 
 // Thinking animation component

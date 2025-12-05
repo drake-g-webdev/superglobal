@@ -1,6 +1,7 @@
 "use client";
 
-import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import { createContext, useContext, useState, useEffect, ReactNode, useRef } from 'react';
+import { useSession } from 'next-auth/react';
 
 // ============================================
 // FEATURE SET B: Trip-Level Context
@@ -41,7 +42,7 @@ export interface ItineraryStop {
 // MAP PINS
 // ============================================
 
-export type MapPinType = 'hostel' | 'restaurant' | 'activity' | 'landmark' | 'transport' | 'other';
+export type MapPinType = 'accommodation' | 'restaurant' | 'activity' | 'historic' | 'transport' | 'city' | 'other';
 
 // Extracted locations from AI responses (for "Add to Map" buttons)
 export interface ExtractedLocation {
@@ -373,7 +374,13 @@ interface ChatsContextType {
 
 const ChatsContext = createContext<ChatsContextType | undefined>(undefined);
 
-const STORAGE_KEY = 'tbp-chats';
+const STORAGE_KEY_PREFIX = 'tbp-chats';
+
+// Get user-specific storage key
+function getStorageKey(userId: string | null | undefined): string {
+  if (!userId) return STORAGE_KEY_PREFIX; // Fallback for unauthenticated state
+  return `${STORAGE_KEY_PREFIX}-${userId}`;
+}
 
 function generateId(): string {
   return `chat-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
@@ -431,13 +438,17 @@ function createNewChat(title?: string): Chat {
 }
 
 export function ChatsProvider({ children }: { children: ReactNode }) {
+  const { data: session, status } = useSession();
+  const userId = session?.user?.id;
+  const prevUserIdRef = useRef<string | null | undefined>(undefined);
   const [chats, setChats] = useState<Chat[]>([]);
   const [activeChatId, setActiveChatId] = useState<string | null>(null);
   const [isLoaded, setIsLoaded] = useState(false);
 
-  // Load from localStorage on mount
-  useEffect(() => {
-    const stored = localStorage.getItem(STORAGE_KEY);
+  // Load chats from localStorage for the current user
+  const loadChatsForUser = (uid: string | null | undefined) => {
+    const storageKey = getStorageKey(uid);
+    const stored = localStorage.getItem(storageKey);
     if (stored) {
       try {
         const parsed = JSON.parse(stored);
@@ -464,31 +475,40 @@ export function ChatsProvider({ children }: { children: ReactNode }) {
             ? parsed.activeChatId
             : migratedChats[0].id;
           setActiveChatId(validActiveId);
-        } else {
-          const initial = createNewChat();
-          setChats([initial]);
-          setActiveChatId(initial.id);
+          return;
         }
       } catch (e) {
         console.error('Failed to parse stored chats:', e);
-        const initial = createNewChat();
-        setChats([initial]);
-        setActiveChatId(initial.id);
       }
-    } else {
-      const initial = createNewChat();
-      setChats([initial]);
-      setActiveChatId(initial.id);
     }
-    setIsLoaded(true);
-  }, []);
+    // No stored chats or parse error - create initial chat
+    const initial = createNewChat();
+    setChats([initial]);
+    setActiveChatId(initial.id);
+  };
+
+  // Load from localStorage on mount and when user changes
+  useEffect(() => {
+    // Wait for session to be determined (not loading)
+    if (status === 'loading') return;
+
+    // Check if user changed
+    const userChanged = prevUserIdRef.current !== undefined && prevUserIdRef.current !== userId;
+    prevUserIdRef.current = userId;
+
+    if (userChanged || !isLoaded) {
+      loadChatsForUser(userId);
+      setIsLoaded(true);
+    }
+  }, [userId, status]);
 
   // Save to localStorage on change
   useEffect(() => {
-    if (isLoaded) {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify({ chats, activeChatId }));
+    if (isLoaded && status !== 'loading') {
+      const storageKey = getStorageKey(userId);
+      localStorage.setItem(storageKey, JSON.stringify({ chats, activeChatId }));
     }
-  }, [chats, activeChatId, isLoaded]);
+  }, [chats, activeChatId, isLoaded, userId, status]);
 
   // Derive activeChat, with auto-recovery if activeChatId is stale
   const activeChat = chats.find(c => c.id === activeChatId) || null;

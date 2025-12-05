@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import ChatInterface from './ChatInterface';
 import LanguageSelector from './LanguageSelector';
 import ProfileDropdown from './ProfileDropdown';
@@ -14,10 +15,10 @@ export default function AppContent() {
   const { isAuthenticated, isLoading, profileComplete } = useAuth();
   const [isProfileOpen, setIsProfileOpen] = useState(false);
 
-  // Redirect to login if not authenticated (after loading completes)
+  // Redirect to landing page if not authenticated (after loading completes)
   useEffect(() => {
     if (!isLoading && !isAuthenticated) {
-      router.push('/auth/login');
+      router.push('/');
     }
   }, [isLoading, isAuthenticated, router]);
 
@@ -42,11 +43,14 @@ export default function AppContent() {
     <main className="flex min-h-screen flex-col items-center justify-between px-2 py-2 bg-stone-900 text-stone-100">
       {/* Header */}
       <div className="z-10 max-w-[1600px] w-full items-center justify-between font-mono text-sm flex">
-        {/* Logo/Title - Left side */}
-        <p className="flex items-center gap-2 border-b border-stone-800 bg-stone-900/90 pb-4 pt-4 backdrop-blur-2xl lg:rounded-xl lg:border lg:bg-stone-800/50 lg:p-3">
+        {/* Logo/Title - Left side - Links to home */}
+        <Link
+          href="/"
+          className="flex items-center gap-2 border-b border-stone-800 bg-stone-900/90 pb-4 pt-4 backdrop-blur-2xl lg:rounded-xl lg:border lg:bg-stone-800/50 lg:p-3 hover:bg-stone-700/50 transition-colors"
+        >
           <Globe size={18} className="text-orange-500" />
           superglobal.travel
-        </p>
+        </Link>
 
         {/* Right side - Language selector and Profile dropdown */}
         <div className="flex items-center gap-3">

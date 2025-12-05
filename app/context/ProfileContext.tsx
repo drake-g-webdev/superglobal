@@ -1,6 +1,7 @@
 "use client";
 
-import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import { createContext, useContext, useState, useEffect, ReactNode, useRef } from 'react';
+import { useSession } from 'next-auth/react';
 
 // ============================================
 // FEATURE SET A: Enhanced Traveler Profile
@@ -126,15 +127,25 @@ interface ProfileContextType {
 
 const ProfileContext = createContext<ProfileContextType | undefined>(undefined);
 
-const STORAGE_KEY = 'tbp-user-profile';
+const STORAGE_KEY_PREFIX = 'tbp-user-profile';
+
+// Get user-specific storage key
+function getStorageKey(userId: string | null | undefined): string {
+  if (!userId) return STORAGE_KEY_PREFIX; // Fallback for unauthenticated state
+  return `${STORAGE_KEY_PREFIX}-${userId}`;
+}
 
 export function ProfileProvider({ children }: { children: ReactNode }) {
+  const { data: session, status } = useSession();
+  const userId = session?.user?.id;
+  const prevUserIdRef = useRef<string | null | undefined>(undefined);
   const [profile, setProfile] = useState<UserProfile>(defaultProfile);
   const [isLoaded, setIsLoaded] = useState(false);
 
-  // Load from localStorage on mount
-  useEffect(() => {
-    const stored = localStorage.getItem(STORAGE_KEY);
+  // Load profile from localStorage for the current user
+  const loadProfileForUser = (uid: string | null | undefined) => {
+    const storageKey = getStorageKey(uid);
+    const stored = localStorage.getItem(storageKey);
     if (stored) {
       try {
         const parsed = JSON.parse(stored);
@@ -145,19 +156,37 @@ export function ProfileProvider({ children }: { children: ReactNode }) {
           // Ensure nested objects are properly merged
           activityWeighting: { ...defaultActivityWeighting, ...(parsed.activityWeighting || {}) }
         });
+        return;
       } catch (e) {
         console.error('Failed to parse stored profile:', e);
       }
     }
-    setIsLoaded(true);
-  }, []);
+    // No stored profile or parse error - use defaults
+    setProfile(defaultProfile);
+  };
+
+  // Load from localStorage on mount and when user changes
+  useEffect(() => {
+    // Wait for session to be determined (not loading)
+    if (status === 'loading') return;
+
+    // Check if user changed
+    const userChanged = prevUserIdRef.current !== undefined && prevUserIdRef.current !== userId;
+    prevUserIdRef.current = userId;
+
+    if (userChanged || !isLoaded) {
+      loadProfileForUser(userId);
+      setIsLoaded(true);
+    }
+  }, [userId, status]);
 
   // Save to localStorage on change
   useEffect(() => {
-    if (isLoaded) {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(profile));
+    if (isLoaded && status !== 'loading') {
+      const storageKey = getStorageKey(userId);
+      localStorage.setItem(storageKey, JSON.stringify(profile));
     }
-  }, [profile, isLoaded]);
+  }, [profile, isLoaded, userId, status]);
 
   const updateProfile = (updates: Partial<UserProfile>) => {
     setProfile(prev => ({ ...prev, ...updates }));
@@ -165,7 +194,8 @@ export function ProfileProvider({ children }: { children: ReactNode }) {
 
   const clearProfile = () => {
     setProfile(defaultProfile);
-    localStorage.removeItem(STORAGE_KEY);
+    const storageKey = getStorageKey(userId);
+    localStorage.removeItem(storageKey);
   };
 
   const isProfileSet = profile.name.trim().length > 0;

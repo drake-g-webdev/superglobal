@@ -725,32 +725,43 @@ LOCATION_EXTRACTION_PROMPT = """Extract all specific, mappable locations from th
 
 For each location found, provide:
 - name: The specific name of the place (e.g., "Lub d Bangkok Silom", "Secret Garden Hostel", "Grand Palace")
-- type: One of: hostel, restaurant, activity, landmark, transport, other
+- type: One of: accommodation, restaurant, activity, historic, transport, city, other
 - description: A brief description from the context (1 sentence max)
 - area: The specific area, city, region, or landmark this location is near or in (e.g., "Cotopaxi National Park", "Quito Old Town", "Banos"). This is CRITICAL for geocoding - extract the most specific geographic context from the surrounding text.
+
+TYPE DEFINITIONS:
+- accommodation: Hostels, hotels, guesthouses, Airbnbs, any place to stay
+- restaurant: Restaurants, cafes, bars, food stalls, any eating/drinking establishment
+- activity: Tours, hikes, adventure activities, beaches (for surfing/swimming), parks, natural attractions
+- historic: Museums, temples, churches, historical monuments, town squares, cultural sites
+- transport: Bus stations, airports, train stations, ferry terminals
+- city: Cities, towns, villages, neighborhoods, beach towns (when mentioned as a destination, not an activity)
+- other: Anything that doesn't fit the above categories
 
 RULES:
 1. Only extract SPECIFIC named locations that could be placed on a map
 2. DO NOT extract general areas or vague descriptions (e.g., "the old town", "local markets") as the name
 3. DO NOT extract countries or large regions as the name
-4. Include hostels, hotels, restaurants, cafes, temples, beaches, hiking trails, bus stations, etc.
-5. For the "area" field, use the most specific geographic context mentioned near the location in the text
-6. If no specific locations are found, return an empty list
-7. IMPORTANT - SPLIT ALTERNATIVES: When text mentions multiple places with "or", "and", or "/" between them, extract each as a SEPARATE location:
+4. IMPORTANT: Use "city" for towns/villages like Quito, Baños, Tena, Montañita, Canoa - NOT "landmark" or "other"
+5. Use "restaurant" for ALL eating/drinking places including cafes, bars, breweries, food markets
+6. Use "historic" for museums, temples, churches, historical sites - NOT for general towns
+7. For the "area" field, use the most specific geographic context mentioned near the location in the text
+8. If no specific locations are found, return an empty list
+9. IMPORTANT - SPLIT ALTERNATIVES: When text mentions multiple places with "or", "and", or "/" between them, extract each as a SEPARATE location:
    - "Montañita or Canoa" → TWO entries: one for "Montañita" and one for "Canoa"
    - "Quilotoa and Cotopaxi" → TWO entries: one for "Quilotoa" and one for "Cotopaxi"
    - "Baños/Puyo" → TWO entries: one for "Baños" and one for "Puyo"
-8. Towns, cities, and named beaches ARE valid locations (not just POIs like hostels)
 
 TEXT TO ANALYZE:
 {text}
 
 Respond with ONLY a JSON array of objects. Example:
 [
-  {{"name": "Secret Garden Hostel", "type": "hostel", "description": "Eco-hostel with volcano views", "area": "Cotopaxi National Park"}},
+  {{"name": "Secret Garden Hostel", "type": "accommodation", "description": "Eco-hostel with volcano views", "area": "Cotopaxi National Park"}},
   {{"name": "Cafe Mosaico", "type": "restaurant", "description": "Rooftop cafe with city views", "area": "Quito Old Town"}},
-  {{"name": "Montañita", "type": "landmark", "description": "Beach town known for surfing and nightlife", "area": "Ecuador Coast"}},
-  {{"name": "Canoa", "type": "landmark", "description": "Quieter beach town with great surf spots", "area": "Ecuador Coast"}}
+  {{"name": "Montañita", "type": "city", "description": "Beach town known for surfing and nightlife", "area": "Ecuador Coast"}},
+  {{"name": "Canoa", "type": "city", "description": "Quieter beach town with great surf spots", "area": "Ecuador Coast"}},
+  {{"name": "La Compañía de Jesús", "type": "historic", "description": "Stunning baroque church with gold-leaf interior", "area": "Quito Old Town"}}
 ]
 
 If no locations found, respond with: []
@@ -782,11 +793,15 @@ async def extract_locations(request: ExtractLocationsRequest):
         locations_data = json.loads(content)
 
         # Validate and filter locations
-        valid_types = {"hostel", "restaurant", "activity", "landmark", "transport", "other"}
+        valid_types = {"accommodation", "restaurant", "activity", "historic", "transport", "city", "other"}
+        # Map old types to new types for backwards compatibility
+        type_mapping = {"hostel": "accommodation", "landmark": "historic"}
         locations = []
         for loc in locations_data:
             if isinstance(loc, dict) and "name" in loc:
                 loc_type = loc.get("type", "other").lower()
+                # Map old types to new types
+                loc_type = type_mapping.get(loc_type, loc_type)
                 if loc_type not in valid_types:
                     loc_type = "other"
                 locations.append(ExtractedLocation(

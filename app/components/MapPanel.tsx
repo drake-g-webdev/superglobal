@@ -2,7 +2,7 @@
 
 import { useState, useCallback, useEffect } from 'react';
 import Map, { Marker, Popup, NavigationControl } from 'react-map-gl';
-import { MapPin, Bed, UtensilsCrossed, Mountain, Landmark, Bus, X, Trash2, Map as MapIcon, List } from 'lucide-react';
+import { MapPin, Bed, UtensilsCrossed, Mountain, Landmark, Bus, X, Trash2, Map as MapIcon, List, Building2 } from 'lucide-react';
 import clsx from 'clsx';
 import { useChats, MapPin as MapPinType, MapPinType as PinType } from '../context/ChatsContext';
 import { useTranslations } from '../context/LocaleContext';
@@ -13,23 +13,46 @@ interface MapPanelProps {
   onToggle: () => void;
 }
 
-const PIN_COLORS: Record<PinType, string> = {
-  hostel: '#f97316',     // orange
-  restaurant: '#ef4444', // red
-  activity: '#22c55e',   // green
-  landmark: '#a855f7',   // purple
-  transport: '#3b82f6',  // blue
-  other: '#6b7280',      // gray
+// Note: We keep "hostel" and "landmark" for backwards compatibility with old pins
+const PIN_COLORS: Record<string, string> = {
+  accommodation: '#f97316', // orange
+  hostel: '#f97316',        // orange (legacy)
+  restaurant: '#ef4444',    // red
+  activity: '#22c55e',      // green
+  historic: '#a855f7',      // purple
+  landmark: '#a855f7',      // purple (legacy)
+  transport: '#3b82f6',     // blue
+  city: '#f59e0b',          // amber
+  other: '#6b7280',         // gray
 };
 
-const PIN_ICONS: Record<PinType, React.ComponentType<{ size?: number; className?: string }>> = {
-  hostel: Bed,
+const PIN_ICONS: Record<string, React.ComponentType<{ size?: number; className?: string }>> = {
+  accommodation: Bed,
+  hostel: Bed,              // legacy
   restaurant: UtensilsCrossed,
   activity: Mountain,
-  landmark: Landmark,
+  historic: Landmark,
+  landmark: Landmark,       // legacy
   transport: Bus,
+  city: Building2,
   other: MapPin,
 };
+
+// Display labels for the legend and popups
+const PIN_LABELS: Record<string, string> = {
+  accommodation: 'Accommodation',
+  hostel: 'Accommodation',  // legacy
+  restaurant: 'Food & Drink',
+  activity: 'Activity',
+  historic: 'Historic Site',
+  landmark: 'Historic Site', // legacy
+  transport: 'Transport',
+  city: 'City/Town',
+  other: 'Other',
+};
+
+// Types shown in the legend (excludes legacy types)
+const LEGEND_TYPES: PinType[] = ['accommodation', 'restaurant', 'activity', 'historic', 'transport', 'city', 'other'];
 
 function PinMarker({ pin, onClick, isSelected }: { pin: MapPinType; onClick: () => void; isSelected: boolean }) {
   const Icon = PIN_ICONS[pin.type] || MapPin;
@@ -124,29 +147,18 @@ export default function MapPanel({ isExpanded, onToggle }: MapPanelProps) {
   return (
     <div className="h-full flex flex-col bg-stone-900 overflow-hidden">
       {/* Header */}
-      <div className="flex items-center justify-between px-3 py-2 border-b border-stone-700 bg-stone-800">
-        <div className="flex items-center gap-2">
-          <MapIcon size={16} className="text-orange-500" />
-          <span className="text-sm font-medium">{t('title')}</span>
-          {pins.length > 0 && (
-            <span className="bg-orange-600 text-white text-xs px-1.5 py-0.5 rounded-full">
-              {pins.length}
-            </span>
+      <div className="flex items-center justify-start px-3 py-2 border-b border-stone-700 bg-stone-800">
+        <button
+          onClick={() => setShowList(!showList)}
+          className={clsx(
+            "p-1.5 rounded transition-colors flex items-center gap-1 text-xs",
+            showList ? "bg-orange-600 text-white" : "hover:bg-stone-700 text-stone-400"
           )}
-        </div>
-        <div className="flex items-center gap-1">
-          <button
-            onClick={() => setShowList(!showList)}
-            className={clsx(
-              "p-1.5 rounded transition-colors flex items-center gap-1 text-xs",
-              showList ? "bg-orange-600 text-white" : "hover:bg-stone-700 text-stone-400"
-            )}
-            title="Toggle pin list"
-          >
-            <List size={14} />
-            {showList ? 'Hide List' : 'Show List'}
-          </button>
-        </div>
+          title="Toggle pin list"
+        >
+          <List size={14} />
+          {showList ? 'Hide List' : 'Show List'}
+        </button>
       </div>
 
       {/* Map with side panel */}
@@ -189,7 +201,7 @@ export default function MapPanel({ isExpanded, onToggle }: MapPanelProps) {
                   </div>
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-medium truncate">{pin.name}</p>
-                    <p className="text-xs text-stone-500 capitalize">{pin.type}</p>
+                    <p className="text-xs text-stone-500">{PIN_LABELS[pin.type] || pin.type}</p>
                   </div>
                   <button
                     onClick={(e) => {
@@ -212,8 +224,9 @@ export default function MapPanel({ isExpanded, onToggle }: MapPanelProps) {
             <div className="p-3 border-t border-stone-700 bg-stone-800/50">
               <p className="text-xs text-stone-500 mb-2">Legend</p>
               <div className="grid grid-cols-2 gap-1 text-xs">
-                {(Object.entries(PIN_COLORS) as [PinType, string][]).map(([type, color]) => {
+                {LEGEND_TYPES.map((type) => {
                   const Icon = PIN_ICONS[type];
+                  const color = PIN_COLORS[type];
                   return (
                     <div key={type} className="flex items-center gap-1.5">
                       <div
@@ -222,7 +235,7 @@ export default function MapPanel({ isExpanded, onToggle }: MapPanelProps) {
                       >
                         <Icon size={8} className="text-white" />
                       </div>
-                      <span className="text-stone-400 capitalize">{type}</span>
+                      <span className="text-stone-400">{PIN_LABELS[type]}</span>
                     </div>
                   );
                 })}
@@ -275,7 +288,7 @@ export default function MapPanel({ isExpanded, onToggle }: MapPanelProps) {
                     </div>
                     <div className="flex-1 min-w-0">
                       <h4 className="font-medium text-white text-sm">{selectedPin.name}</h4>
-                      <p className="text-xs text-stone-400 capitalize">{selectedPin.type}</p>
+                      <p className="text-xs text-stone-400">{PIN_LABELS[selectedPin.type] || selectedPin.type}</p>
                     </div>
                   </div>
                   {selectedPin.description && (

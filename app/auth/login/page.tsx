@@ -44,7 +44,7 @@ export default function LoginPage() {
         return;
       }
 
-      router.push('/');
+      router.push('/app');
     } catch (err) {
       setError('An unexpected error occurred');
     } finally {

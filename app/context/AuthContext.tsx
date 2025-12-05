@@ -22,7 +22,7 @@ function AuthContextProvider({ children }: { children: ReactNode }) {
   const isLoading = status === 'loading';
   const isAuthenticated = status === 'authenticated';
   const user = session?.user || null;
-  const profileComplete = (session?.user as any)?.profileComplete ?? false;
+  const profileComplete = session?.user?.profileComplete ?? false;
 
   const login = async (email: string, password: string) => {
     try {

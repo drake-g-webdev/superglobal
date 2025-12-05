@@ -220,7 +220,7 @@ export default function BucketListPanel() {
                     {item.text}
                   </p>
                   <div className="flex items-center gap-1.5 mt-1">
-                    <Icon size={10} style={{ color: config.color }} />
+                    <span style={{ color: config.color }}><Icon size={10} /></span>
                     <span className="text-xs text-stone-500">{config.label}</span>
                   </div>
                 </div>

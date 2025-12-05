@@ -355,7 +355,7 @@ export default function CostDashboard() {
                   className="w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0"
                   style={{ backgroundColor: config.color + '20' }}
                 >
-                  <Icon size={14} style={{ color: config.color }} />
+                  <span style={{ color: config.color }}><Icon size={14} /></span>
                 </div>
                 <span className="flex-1 text-left text-sm font-medium">{config.label}</span>
                 <span className="text-sm text-stone-400">${total.toFixed(0)}</span>

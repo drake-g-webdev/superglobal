@@ -381,7 +381,7 @@ export default function EventsPanel() {
                       className="w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0"
                       style={{ backgroundColor: config.color + '20' }}
                     >
-                      <Icon size={20} style={{ color: config.color }} />
+                      <span style={{ color: config.color }}><Icon size={20} /></span>
                     </div>
 
                     {/* Content */}

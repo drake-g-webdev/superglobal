@@ -3,6 +3,8 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { Send, MapPin, DollarSign, User, Settings, Compass, Calendar, Target, Map as MapIcon, Plus, Check, Loader2, MessageSquare, ChevronLeft, ChevronRight, Calculator, ListChecks, Backpack, CalendarDays, Mountain, Sailboat, Tent, Footprints, X, Menu, ArrowLeft } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
+import ReactMarkdown, { Components } from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import clsx from 'clsx';
 import { useChats, MapPinType, ExtractedLocation, MessageLocations, ExtractedCost, MessageCosts, CostCategory, ExtractedItinerary, MessageItineraries, ItineraryStop } from '../context/ChatsContext';
 import { useProfile } from '../context/ProfileContext';
@@ -532,13 +534,18 @@ export default function ChatInterface() {
 
     // Render message content with inline location and cost buttons
     const renderMessageContent = (content: string, messageIndex: number, isAssistant: boolean) => {
+        // For user messages, just render with basic markdown
         if (!isAssistant) {
             return (
-                <div dangerouslySetInnerHTML={{
-                    __html: content
-                        .replace(/\n/g, '<br/>')
-                        .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
-                }} />
+                <ReactMarkdown
+                    remarkPlugins={[remarkGfm]}
+                    components={{
+                        p: ({ children }) => <p className="mb-2 last:mb-0">{children}</p>,
+                        strong: ({ children }) => <strong className="font-bold">{children}</strong>,
+                    }}
+                >
+                    {content}
+                </ReactMarkdown>
             );
         }
 
@@ -562,175 +569,54 @@ export default function ChatInterface() {
         const shownLocations = new Set<string>();
         const shownCosts = new Set<string>();
 
-        // Process content - apply basic formatting first
-        let processedContent = content
-            .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" class="text-orange-400 hover:underline font-bold">$1</a>')
-            .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+        // Build placeholder mapping for inline buttons
+        const placeholderMap = new Map<string, { type: 'location' | 'cost'; data: ExtractedLocation | ExtractedCost }>();
+        let processedContent = content;
 
         // For each location, find where it appears and mark it for button insertion
-        // We'll use a placeholder system to avoid regex conflicts
-        const placeholders: { placeholder: string; type: 'location' | 'cost'; data: ExtractedLocation | ExtractedCost }[] = [];
-
         for (const loc of locations) {
             const locLower = loc.name.toLowerCase();
             if (shownLocations.has(locLower)) continue;
 
-            // Find the location name in the content (case-insensitive)
             const regex = new RegExp(`(${loc.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'i');
             const match = processedContent.match(regex);
 
             if (match) {
-                const placeholder = `__LOC_BTN_${placeholders.length}__`;
-                // Insert placeholder right after the location name
+                const placeholder = `⟦LOC${placeholderMap.size}⟧`;
                 processedContent = processedContent.replace(regex, `$1${placeholder}`);
-                placeholders.push({ placeholder, type: 'location', data: loc });
+                placeholderMap.set(placeholder, { type: 'location', data: loc });
                 shownLocations.add(locLower);
             }
         }
 
         // For each cost, use the AI-provided text_to_match to place buttons
-        // (same strategy as locations - AI tells us exactly where to put the button)
         for (const cost of costs) {
             const costKey = `${cost.name.toLowerCase()}-${cost.amount}`;
             if (shownCosts.has(costKey)) continue;
 
-            // Use AI-provided text_to_match (preferred method)
             const textToMatch = (cost as { text_to_match?: string }).text_to_match;
             if (textToMatch && textToMatch.length > 2) {
-                // Escape special regex characters and search for exact match
                 const escapedText = textToMatch.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
                 const regex = new RegExp(`(${escapedText})`, 'i');
                 const match = processedContent.match(regex);
                 if (match) {
-                    const placeholder = `__COST_BTN_${placeholders.length}__`;
+                    const placeholder = `⟦COST${placeholderMap.size}⟧`;
                     processedContent = processedContent.replace(regex, `$1${placeholder}`);
-                    placeholders.push({ placeholder, type: 'cost', data: cost });
+                    placeholderMap.set(placeholder, { type: 'cost', data: cost });
                     shownCosts.add(costKey);
                     continue;
                 }
             }
 
-            // Fallback: Try to match the cost name
             if (cost.name.length > 3) {
                 const nameRegex = new RegExp(`(${cost.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'i');
                 const match = processedContent.match(nameRegex);
                 if (match) {
-                    const placeholder = `__COST_BTN_${placeholders.length}__`;
+                    const placeholder = `⟦COST${placeholderMap.size}⟧`;
                     processedContent = processedContent.replace(nameRegex, `$1${placeholder}`);
-                    placeholders.push({ placeholder, type: 'cost', data: cost });
+                    placeholderMap.set(placeholder, { type: 'cost', data: cost });
                     shownCosts.add(costKey);
                 }
-            }
-        }
-
-        // Sort placeholders by their position in the text (so we process left-to-right)
-        const sortedPlaceholders = [...placeholders].sort((a, b) => {
-            const posA = processedContent.indexOf(a.placeholder);
-            const posB = processedContent.indexOf(b.placeholder);
-            return posA - posB;
-        });
-
-        // Now split by placeholders and create React elements
-        const elements: React.ReactNode[] = [];
-        let remaining = processedContent;
-        let partIndex = 0;
-
-        for (const { placeholder, type, data } of sortedPlaceholders) {
-            const idx = remaining.indexOf(placeholder);
-            if (idx === -1) continue;
-
-            // Add text before the placeholder
-            const before = remaining.substring(0, idx);
-            if (before) {
-                elements.push(
-                    <span key={`text-${partIndex++}`} dangerouslySetInnerHTML={{ __html: before.replace(/\n/g, '<br/>') }} />
-                );
-            }
-
-            if (type === 'location') {
-                const location = data as ExtractedLocation;
-                // Add the inline button
-                const isOnMap = isLocationOnMap(location.name) || addedLocations.has(location.name.toLowerCase());
-                const isAdding = addingLocation === location.name;
-
-                if (!isOnMap) {
-                    elements.push(
-                        <button
-                            key={`btn-${partIndex++}`}
-                            onClick={() => addLocationToMap(location, messageIndex)}
-                            disabled={isAdding}
-                            className={clsx(
-                                "inline-flex items-center gap-0.5 px-1 py-0.5 rounded text-[10px] transition-colors align-middle mx-0.5",
-                                isAdding
-                                    ? "bg-stone-600 text-stone-300 cursor-wait"
-                                    : "bg-orange-600/30 hover:bg-orange-600/50 text-orange-400 hover:text-orange-300 border border-orange-500/30"
-                            )}
-                            title={`Add ${location.name} to map`}
-                        >
-                            {isAdding ? (
-                                <Loader2 size={10} className="animate-spin" />
-                            ) : (
-                                <>
-                                    <Plus size={10} />
-                                    <MapPin size={10} />
-                                </>
-                            )}
-                        </button>
-                    );
-                } else {
-                    // Show a small "on map" indicator
-                    elements.push(
-                        <span
-                            key={`check-${partIndex++}`}
-                            className="inline-flex items-center gap-0.5 px-1 py-0.5 rounded text-[10px] bg-green-600/20 text-green-400 align-middle mx-0.5"
-                            title={`${location.name} is on map`}
-                        >
-                            <Check size={10} />
-                            <MapPin size={10} />
-                        </span>
-                    );
-                }
-            } else if (type === 'cost') {
-                const cost = data as ExtractedCost;
-                const isInBudget = isCostInBudget(cost.name) || addedCosts.has(cost.name.toLowerCase());
-
-                if (!isInBudget) {
-                    elements.push(
-                        <button
-                            key={`cost-btn-${partIndex++}`}
-                            onClick={() => openCostEditModal(cost, messageIndex)}
-                            className="inline-flex items-center gap-0.5 px-1 py-0.5 rounded text-[10px] transition-colors align-middle mx-0.5 bg-green-600/30 hover:bg-green-600/50 text-green-400 hover:text-green-300 border border-green-500/30"
-                            title={`Add ${cost.name} ($${cost.amount}) to budget`}
-                        >
-                            <Plus size={10} />
-                            <DollarSign size={10} />
-                        </button>
-                    );
-                } else {
-                    // Show a small "in budget" indicator
-                    elements.push(
-                        <span
-                            key={`cost-check-${partIndex++}`}
-                            className="inline-flex items-center gap-0.5 px-1 py-0.5 rounded text-[10px] bg-green-600/20 text-green-400 align-middle mx-0.5"
-                            title={`${cost.name} is in budget`}
-                        >
-                            <Check size={10} />
-                            <DollarSign size={10} />
-                        </span>
-                    );
-                }
-            }
-
-            remaining = remaining.substring(idx + placeholder.length);
-        }
-
-        // Add any remaining text (strip any leftover placeholders)
-        if (remaining) {
-            const cleanRemaining = remaining.replace(/__LOC_BTN_\d+__|__COST_BTN_\d+__/g, '');
-            if (cleanRemaining) {
-                elements.push(
-                    <span key={`text-${partIndex++}`} dangerouslySetInnerHTML={{ __html: cleanRemaining.replace(/\n/g, '<br/>') }} />
-                );
             }
         }
 
@@ -740,12 +626,159 @@ export default function ChatInterface() {
             return !shownCosts.has(costKey);
         });
 
-        // Clean any leftover placeholders from processedContent for fallback rendering
-        const cleanProcessedContent = processedContent.replace(/__LOC_BTN_\d+__|__COST_BTN_\d+__/g, '');
+        // Helper to render inline buttons from placeholders in text
+        const renderTextWithButtons = (text: string): React.ReactNode => {
+            const placeholderRegex = /⟦(LOC|COST)\d+⟧/g;
+            const parts: React.ReactNode[] = [];
+            let lastIndex = 0;
+            let match;
+            let keyIdx = 0;
+
+            while ((match = placeholderRegex.exec(text)) !== null) {
+                // Add text before placeholder
+                if (match.index > lastIndex) {
+                    parts.push(text.slice(lastIndex, match.index));
+                }
+
+                const placeholder = match[0];
+                const data = placeholderMap.get(placeholder);
+
+                if (data) {
+                    if (data.type === 'location') {
+                        const location = data.data as ExtractedLocation;
+                        const isOnMap = isLocationOnMap(location.name) || addedLocations.has(location.name.toLowerCase());
+                        const isAdding = addingLocation === location.name;
+
+                        if (!isOnMap) {
+                            parts.push(
+                                <button
+                                    key={`loc-btn-${keyIdx++}`}
+                                    onClick={() => addLocationToMap(location, messageIndex)}
+                                    disabled={isAdding}
+                                    className={clsx(
+                                        "inline-flex items-center gap-0.5 px-1 py-0.5 rounded text-[10px] transition-colors align-middle mx-0.5",
+                                        isAdding
+                                            ? "bg-stone-600 text-stone-300 cursor-wait"
+                                            : "bg-orange-600/30 hover:bg-orange-600/50 text-orange-400 hover:text-orange-300 border border-orange-500/30"
+                                    )}
+                                    title={`Add ${location.name} to map`}
+                                >
+                                    {isAdding ? (
+                                        <Loader2 size={10} className="animate-spin" />
+                                    ) : (
+                                        <>
+                                            <Plus size={10} />
+                                            <MapPin size={10} />
+                                        </>
+                                    )}
+                                </button>
+                            );
+                        } else {
+                            parts.push(
+                                <span
+                                    key={`loc-check-${keyIdx++}`}
+                                    className="inline-flex items-center gap-0.5 px-1 py-0.5 rounded text-[10px] bg-green-600/20 text-green-400 align-middle mx-0.5"
+                                    title={`${location.name} is on map`}
+                                >
+                                    <Check size={10} />
+                                    <MapPin size={10} />
+                                </span>
+                            );
+                        }
+                    } else if (data.type === 'cost') {
+                        const cost = data.data as ExtractedCost;
+                        const isInBudget = isCostInBudget(cost.name) || addedCosts.has(cost.name.toLowerCase());
+
+                        if (!isInBudget) {
+                            parts.push(
+                                <button
+                                    key={`cost-btn-${keyIdx++}`}
+                                    onClick={() => openCostEditModal(cost, messageIndex)}
+                                    className="inline-flex items-center gap-0.5 px-1 py-0.5 rounded text-[10px] transition-colors align-middle mx-0.5 bg-green-600/30 hover:bg-green-600/50 text-green-400 hover:text-green-300 border border-green-500/30"
+                                    title={`Add ${cost.name} ($${cost.amount}) to budget`}
+                                >
+                                    <Plus size={10} />
+                                    <DollarSign size={10} />
+                                </button>
+                            );
+                        } else {
+                            parts.push(
+                                <span
+                                    key={`cost-check-${keyIdx++}`}
+                                    className="inline-flex items-center gap-0.5 px-1 py-0.5 rounded text-[10px] bg-green-600/20 text-green-400 align-middle mx-0.5"
+                                    title={`${cost.name} is in budget`}
+                                >
+                                    <Check size={10} />
+                                    <DollarSign size={10} />
+                                </span>
+                            );
+                        }
+                    }
+                }
+
+                lastIndex = match.index + match[0].length;
+            }
+
+            // Add remaining text
+            if (lastIndex < text.length) {
+                parts.push(text.slice(lastIndex));
+            }
+
+            return parts.length > 0 ? parts : text;
+        };
+
+        // Custom markdown components with proper styling
+        const markdownComponents: Components = {
+            p: ({ children }) => <p className="mb-3 last:mb-0 leading-relaxed">{children}</p>,
+            h1: ({ children }) => <h1 className="text-xl font-bold text-orange-400 mb-3 mt-4 first:mt-0">{children}</h1>,
+            h2: ({ children }) => <h2 className="text-lg font-bold text-orange-400 mb-2 mt-4 first:mt-0">{children}</h2>,
+            h3: ({ children }) => <h3 className="text-base font-bold text-orange-300 mb-2 mt-3 first:mt-0">{children}</h3>,
+            h4: ({ children }) => <h4 className="text-sm font-bold text-stone-200 mb-2 mt-2 first:mt-0">{children}</h4>,
+            strong: ({ children }) => <strong className="font-bold text-stone-100">{children}</strong>,
+            em: ({ children }) => <em className="italic text-stone-300">{children}</em>,
+            ul: ({ children }) => <ul className="list-disc list-inside mb-3 space-y-1 ml-2">{children}</ul>,
+            ol: ({ children }) => <ol className="list-decimal list-inside mb-3 space-y-1 ml-2">{children}</ol>,
+            li: ({ children }) => <li className="text-stone-300">{children}</li>,
+            a: ({ href, children }) => (
+                <a href={href} target="_blank" rel="noopener noreferrer" className="text-orange-400 hover:underline font-semibold">
+                    {children}
+                </a>
+            ),
+            blockquote: ({ children }) => (
+                <blockquote className="border-l-4 border-orange-500/50 pl-4 py-1 my-3 italic text-stone-400 bg-stone-800/30 rounded-r">
+                    {children}
+                </blockquote>
+            ),
+            code: ({ className, children }) => {
+                const isInline = !className;
+                if (isInline) {
+                    return <code className="bg-stone-800 px-1.5 py-0.5 rounded text-orange-300 text-sm font-mono">{children}</code>;
+                }
+                return (
+                    <code className="block bg-stone-900 p-3 rounded-lg my-2 overflow-x-auto text-sm font-mono text-stone-300">
+                        {children}
+                    </code>
+                );
+            },
+            pre: ({ children }) => <pre className="bg-stone-900 p-3 rounded-lg my-3 overflow-x-auto">{children}</pre>,
+            hr: () => <hr className="border-stone-700 my-4" />,
+            // Handle text nodes to inject our inline buttons
+            text: ({ children }) => {
+                if (typeof children === 'string') {
+                    return <>{renderTextWithButtons(children)}</>;
+                }
+                return <>{children}</>;
+            },
+        };
 
         return (
             <>
-                {elements.length > 0 ? elements : <span dangerouslySetInnerHTML={{ __html: cleanProcessedContent.replace(/\n/g, '<br/>') }} />}
+                <ReactMarkdown
+                    remarkPlugins={[remarkGfm]}
+                    components={markdownComponents}
+                >
+                    {processedContent}
+                </ReactMarkdown>
                 {/* Show unmatched costs as a row at the end */}
                 {unmatchedCosts.length > 0 && (
                     <div className="mt-2 flex flex-wrap gap-2 items-center">

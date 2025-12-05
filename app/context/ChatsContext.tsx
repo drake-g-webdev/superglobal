@@ -494,9 +494,17 @@ export function ChatsProvider({ children }: { children: ReactNode }) {
     if (!userId) return null;
 
     try {
-      const response = await fetch('/api/chats');
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 10000); // 10s timeout
+
+      const response = await fetch('/api/chats', {
+        signal: controller.signal,
+      });
+      clearTimeout(timeoutId);
+
       if (response.ok) {
         const data = await response.json();
+        // Handle both empty array (DB error fallback) and array with data
         if (Array.isArray(data) && data.length > 0) {
           // Transform DB format to local Chat format
           return data.map((chat: Record<string, unknown>) => ({

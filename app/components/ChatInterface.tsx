@@ -1,10 +1,10 @@
 "use client";
 
 import { useState, useRef, useEffect, useCallback } from 'react';
-import { Send, MapPin, DollarSign, User, Settings, Compass, Calendar, Target, Map as MapIcon, Plus, Check, Loader2, MessageSquare, ChevronLeft, ChevronRight, Calculator, ListChecks, Backpack, CalendarDays, Mountain, Sailboat, Tent, Footprints } from 'lucide-react';
+import { Send, MapPin, DollarSign, User, Settings, Compass, Calendar, Target, Map as MapIcon, Plus, Check, Loader2, MessageSquare, ChevronLeft, ChevronRight, Calculator, ListChecks, Backpack, CalendarDays, Mountain, Sailboat, Tent, Footprints, X } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import clsx from 'clsx';
-import { useChats, MapPinType, CostCategory, ExtractedLocation, MessageLocations } from '../context/ChatsContext';
+import { useChats, MapPinType, ExtractedLocation, MessageLocations, ExtractedCost, MessageCosts, CostCategory } from '../context/ChatsContext';
 import { useProfile } from '../context/ProfileContext';
 import { useTranslations } from '../context/LocaleContext';
 import ChatSidebar from './ChatSidebar';
@@ -82,7 +82,7 @@ function ThinkingAnimation() {
 }
 
 export default function ChatInterface() {
-    const { activeChat, updateChat, addMessage, addMapPin, addCostItems, addTouristTrap, updateMapView, mergeConversationVariables, setExtractedLocations } = useChats();
+    const { activeChat, updateChat, addMessage, addMapPin, addTouristTrap, updateMapView, mergeConversationVariables, setExtractedLocations, setExtractedCosts, addCostItem } = useChats();
     const { profile, isProfileSet } = useProfile();
     const t = useTranslations('chat');
     const tProfile = useTranslations('profile');
@@ -114,6 +114,20 @@ export default function ChatInterface() {
     // Get locations for current chat from persisted context (survives refresh)
     const messageLocations = activeChat?.extractedLocations || {};
 
+    // Get costs for current chat from persisted context (survives refresh)
+    const messageCosts = activeChat?.extractedCosts || {};
+
+    // Track in-flight cost extraction requests
+    const [extractingCosts, setExtractingCosts] = useState<Set<string>>(new Set());
+    const costInFlightRef = useRef<Set<string>>(new Set());
+
+    // Track which costs have been added to budget (by name to avoid duplicates)
+    const [addedCosts, setAddedCosts] = useState<Set<string>>(new Set());
+
+    // Modal state for editing cost before adding to budget
+    const [editingCost, setEditingCost] = useState<ExtractedCost | null>(null);
+    const [editingCostMessageIndex, setEditingCostMessageIndex] = useState<number | null>(null);
+
     // Update added locations when chat changes or pins change
     useEffect(() => {
         if (activeChat) {
@@ -121,6 +135,14 @@ export default function ChatInterface() {
             setAddedLocations(pinned);
         }
     }, [activeChat?.id, activeChat?.mapPins]);
+
+    // Update added costs when chat changes or cost items change
+    useEffect(() => {
+        if (activeChat) {
+            const budgeted = new Set(activeChat.tripCosts.items.map(c => c.name.toLowerCase()));
+            setAddedCosts(budgeted);
+        }
+    }, [activeChat?.id, activeChat?.tripCosts.items]);
 
     // Extract locations from a message using AI
     const extractLocationsFromMessage = useCallback(async (messageContent: string, messageIndex: number, chatId: string, destination: string) => {
@@ -179,80 +201,61 @@ export default function ChatInterface() {
 
     // Extract costs from a message using AI
     const extractCostsFromMessage = useCallback(async (messageContent: string, messageIndex: number, chatId: string, destination: string) => {
-        const key = `cost-${chatId}-${messageIndex}`;
+        const key = `costs-${chatId}-${messageIndex}`;
         console.log('[Cost Extraction] Starting extraction for key:', key);
 
-        // Check if already in flight
-        if (inFlightRef.current.has(key)) {
+        // Check if already in flight or already extracted
+        if (costInFlightRef.current.has(key)) {
             console.log('[Cost Extraction] Already in-flight, skipping:', key);
             return;
         }
 
         // Mark as in-flight immediately
-        inFlightRef.current.add(key);
-
-        // Determine number of travelers from profile
-        const travelStyleToNum: Record<string, number> = {
-            solo: 1,
-            couple: 2,
-            group: 4,
-            family: 4,
-        };
-        const numTravelers = isProfileSet ? (travelStyleToNum[profile.travelStyle] || 1) : 1;
+        costInFlightRef.current.add(key);
+        setExtractingCosts(prev => new Set([...prev, key]));
 
         try {
-            console.log('[Cost Extraction] Calling API for:', destination, 'with', numTravelers, 'travelers');
+            console.log('[Cost Extraction] Calling API for:', destination);
             const response = await fetch(`${API_URL}/api/extract-costs`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     response_text: messageContent,
                     destination: destination,
-                    num_travelers: numTravelers,
+                    num_travelers: 1,
                 }),
             });
 
             if (response.ok) {
                 const data = await response.json();
                 console.log('[Cost Extraction] API Response:', data);
+                const typedCosts: ExtractedCost[] = (data.costs || []).map((cost: { name: string; category: string; amount: number; quantity: number; unit: string; notes: string }) => ({
+                    name: cost.name,
+                    category: (cost.category as CostCategory) || 'misc',
+                    amount: cost.amount || 0,
+                    quantity: cost.quantity || 1,
+                    unit: cost.unit || 'trip',
+                    notes: cost.notes || '',
+                }));
 
-                // Add extracted costs
-                if (data.costs && data.costs.length > 0) {
-                    const costItems = data.costs.map((cost: { category: string; name: string; amount: number; quantity: number; unit: string; notes: string }) => ({
-                        category: cost.category as CostCategory,
-                        name: cost.name,
-                        amount: cost.amount,
-                        quantity: cost.quantity || 1,
-                        unit: cost.unit || 'trip',
-                        notes: cost.notes || '',
-                        isEstimate: false,
-                        sourceMessageIndex: messageIndex,
-                    }));
-                    console.log('[Cost Extraction] Adding', costItems.length, 'cost items');
-                    addCostItems(chatId, costItems);
-                }
-
-                // Add tourist trap warnings
-                if (data.tourist_traps && data.tourist_traps.length > 0) {
-                    for (const trap of data.tourist_traps) {
-                        console.log('[Cost Extraction] Adding tourist trap warning:', trap.name);
-                        addTouristTrap(chatId, {
-                            name: trap.name,
-                            description: trap.description,
-                            location: trap.location || '',
-                            sourceMessageIndex: messageIndex,
-                        });
-                    }
-                }
+                console.log('[Cost Extraction] Extracted costs:', typedCosts.length, 'costs for message', messageIndex);
+                // Persist to context (survives refresh via localStorage)
+                setExtractedCosts(chatId, messageIndex, typedCosts);
             } else {
                 console.error('[Cost Extraction] API error:', response.status, response.statusText);
             }
         } catch (e) {
             console.error('[Cost Extraction] Failed:', e);
             // Remove from in-flight on error so it can be retried
-            inFlightRef.current.delete(key);
+            costInFlightRef.current.delete(key);
+        } finally {
+            setExtractingCosts(prev => {
+                const next = new Set(prev);
+                next.delete(key);
+                return next;
+            });
         }
-    }, [addCostItems, addTouristTrap, profile.travelStyle, isProfileSet]);
+    }, [setExtractedCosts]);
 
     // Extract conversation variables from a message exchange
     const extractConversationVariables = useCallback(async (userMessage: string, aiResponse: string, chatId: string, destination: string) => {
@@ -377,7 +380,20 @@ export default function ChatInterface() {
         return activeChat.mapPins.some(pin => pin.name.toLowerCase() === nameLower);
     }, [activeChat]);
 
-    // Render message content with inline location buttons
+    // Open the cost edit modal
+    const openCostEditModal = (cost: ExtractedCost, messageIndex: number) => {
+        setEditingCost({ ...cost }); // Clone to allow editing
+        setEditingCostMessageIndex(messageIndex);
+    };
+
+    // Check if a cost is already in budget (by name)
+    const isCostInBudget = useCallback((costName: string): boolean => {
+        if (!activeChat) return false;
+        const nameLower = costName.toLowerCase();
+        return activeChat.tripCosts.items.some(item => item.name.toLowerCase() === nameLower);
+    }, [activeChat]);
+
+    // Render message content with inline location and cost buttons
     const renderMessageContent = (content: string, messageIndex: number, isAssistant: boolean) => {
         if (!isAssistant) {
             return (
@@ -391,15 +407,23 @@ export default function ChatInterface() {
 
         const originalLocations = messageLocations[messageIndex] || [];
         const locations = [...originalLocations];
+        const originalCosts = messageCosts[messageIndex] || [];
+        const costs = [...originalCosts];
 
         if (locations.length > 0) {
             console.log('[Render] ChatId:', activeChat?.id, 'Message index:', messageIndex, 'Locations found:', locations.length, 'Locations:', locations.map(l => l.name));
         }
+        if (costs.length > 0) {
+            console.log('[Render] ChatId:', activeChat?.id, 'Message index:', messageIndex, 'Costs found:', costs.length, 'Costs:', costs.map(c => `${c.name}: $${c.amount}`));
+        }
         const extractKey = activeChat ? `${activeChat.id}-${messageIndex}` : '';
         const isExtracting = extractingLocations.has(extractKey);
+        const costExtractKey = activeChat ? `costs-${activeChat.id}-${messageIndex}` : '';
+        const isExtractingCosts = extractingCosts.has(costExtractKey);
 
-        // Track which locations have been shown (by name, lowercase)
+        // Track which locations and costs have been shown (by name, lowercase)
         const shownLocations = new Set<string>();
+        const shownCosts = new Set<string>();
 
         // Process content - apply basic formatting first
         let processedContent = content
@@ -408,7 +432,7 @@ export default function ChatInterface() {
 
         // For each location, find where it appears and mark it for button insertion
         // We'll use a placeholder system to avoid regex conflicts
-        const placeholders: { placeholder: string; location: ExtractedLocation }[] = [];
+        const placeholders: { placeholder: string; type: 'location' | 'cost'; data: ExtractedLocation | ExtractedCost }[] = [];
 
         for (const loc of locations) {
             const locLower = loc.name.toLowerCase();
@@ -422,8 +446,49 @@ export default function ChatInterface() {
                 const placeholder = `__LOC_BTN_${placeholders.length}__`;
                 // Insert placeholder right after the location name
                 processedContent = processedContent.replace(regex, `$1${placeholder}`);
-                placeholders.push({ placeholder, location: loc });
+                placeholders.push({ placeholder, type: 'location', data: loc });
                 shownLocations.add(locLower);
+            }
+        }
+
+        // For each cost, find where the amount appears and mark it for button insertion
+        for (const cost of costs) {
+            const costKey = `${cost.name.toLowerCase()}-${cost.amount}`;
+            if (shownCosts.has(costKey)) continue;
+
+            // Try to find the cost amount in the content (e.g., "$15", "15 USD", "$15/night")
+            // Match formats like $15, $15.00, 15 USD, 15 dollars, etc.
+            const amountStr = cost.amount.toString();
+            const pricePatterns = [
+                `\\$${amountStr}(?:\\.\\d{2})?`, // $15 or $15.00
+                `${amountStr}\\s*(?:USD|dollars?|bucks)`, // 15 USD, 15 dollars
+                `\\$${amountStr}[/-]`, // $15/ or $15-
+            ];
+
+            let matched = false;
+            for (const pattern of pricePatterns) {
+                const regex = new RegExp(`(${pattern})`, 'i');
+                const match = processedContent.match(regex);
+                if (match) {
+                    const placeholder = `__COST_BTN_${placeholders.length}__`;
+                    processedContent = processedContent.replace(regex, `$1${placeholder}`);
+                    placeholders.push({ placeholder, type: 'cost', data: cost });
+                    shownCosts.add(costKey);
+                    matched = true;
+                    break;
+                }
+            }
+
+            // If no price pattern matched, try matching the cost name
+            if (!matched && cost.name.length > 3) {
+                const nameRegex = new RegExp(`(${cost.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'i');
+                const match = processedContent.match(nameRegex);
+                if (match) {
+                    const placeholder = `__COST_BTN_${placeholders.length}__`;
+                    processedContent = processedContent.replace(nameRegex, `$1${placeholder}`);
+                    placeholders.push({ placeholder, type: 'cost', data: cost });
+                    shownCosts.add(costKey);
+                }
             }
         }
 
@@ -432,7 +497,7 @@ export default function ChatInterface() {
         let remaining = processedContent;
         let partIndex = 0;
 
-        for (const { placeholder, location } of placeholders) {
+        for (const { placeholder, type, data } of placeholders) {
             const idx = remaining.indexOf(placeholder);
             if (idx === -1) continue;
 
@@ -444,46 +509,78 @@ export default function ChatInterface() {
                 );
             }
 
-            // Add the inline button
-            const isOnMap = isLocationOnMap(location.name) || addedLocations.has(location.name.toLowerCase());
-            const isAdding = addingLocation === location.name;
+            if (type === 'location') {
+                const location = data as ExtractedLocation;
+                // Add the inline button
+                const isOnMap = isLocationOnMap(location.name) || addedLocations.has(location.name.toLowerCase());
+                const isAdding = addingLocation === location.name;
 
-            if (!isOnMap) {
-                elements.push(
-                    <button
-                        key={`btn-${partIndex++}`}
-                        onClick={() => addLocationToMap(location, messageIndex)}
-                        disabled={isAdding}
-                        className={clsx(
-                            "inline-flex items-center gap-0.5 px-1 py-0.5 rounded text-[10px] transition-colors align-middle mx-0.5",
-                            isAdding
-                                ? "bg-stone-600 text-stone-300 cursor-wait"
-                                : "bg-orange-600/30 hover:bg-orange-600/50 text-orange-400 hover:text-orange-300 border border-orange-500/30"
-                        )}
-                        title={`Add ${location.name} to map`}
-                    >
-                        {isAdding ? (
-                            <Loader2 size={10} className="animate-spin" />
-                        ) : (
-                            <>
-                                <Plus size={10} />
-                                <MapPin size={10} />
-                            </>
-                        )}
-                    </button>
-                );
-            } else {
-                // Show a small "on map" indicator
-                elements.push(
-                    <span
-                        key={`check-${partIndex++}`}
-                        className="inline-flex items-center gap-0.5 px-1 py-0.5 rounded text-[10px] bg-green-600/20 text-green-400 align-middle mx-0.5"
-                        title={`${location.name} is on map`}
-                    >
-                        <Check size={10} />
-                        <MapPin size={10} />
-                    </span>
-                );
+                if (!isOnMap) {
+                    elements.push(
+                        <button
+                            key={`btn-${partIndex++}`}
+                            onClick={() => addLocationToMap(location, messageIndex)}
+                            disabled={isAdding}
+                            className={clsx(
+                                "inline-flex items-center gap-0.5 px-1 py-0.5 rounded text-[10px] transition-colors align-middle mx-0.5",
+                                isAdding
+                                    ? "bg-stone-600 text-stone-300 cursor-wait"
+                                    : "bg-orange-600/30 hover:bg-orange-600/50 text-orange-400 hover:text-orange-300 border border-orange-500/30"
+                            )}
+                            title={`Add ${location.name} to map`}
+                        >
+                            {isAdding ? (
+                                <Loader2 size={10} className="animate-spin" />
+                            ) : (
+                                <>
+                                    <Plus size={10} />
+                                    <MapPin size={10} />
+                                </>
+                            )}
+                        </button>
+                    );
+                } else {
+                    // Show a small "on map" indicator
+                    elements.push(
+                        <span
+                            key={`check-${partIndex++}`}
+                            className="inline-flex items-center gap-0.5 px-1 py-0.5 rounded text-[10px] bg-green-600/20 text-green-400 align-middle mx-0.5"
+                            title={`${location.name} is on map`}
+                        >
+                            <Check size={10} />
+                            <MapPin size={10} />
+                        </span>
+                    );
+                }
+            } else if (type === 'cost') {
+                const cost = data as ExtractedCost;
+                const isInBudget = isCostInBudget(cost.name) || addedCosts.has(cost.name.toLowerCase());
+
+                if (!isInBudget) {
+                    elements.push(
+                        <button
+                            key={`cost-btn-${partIndex++}`}
+                            onClick={() => openCostEditModal(cost, messageIndex)}
+                            className="inline-flex items-center gap-0.5 px-1 py-0.5 rounded text-[10px] transition-colors align-middle mx-0.5 bg-green-600/30 hover:bg-green-600/50 text-green-400 hover:text-green-300 border border-green-500/30"
+                            title={`Add ${cost.name} ($${cost.amount}) to budget`}
+                        >
+                            <Plus size={10} />
+                            <DollarSign size={10} />
+                        </button>
+                    );
+                } else {
+                    // Show a small "in budget" indicator
+                    elements.push(
+                        <span
+                            key={`cost-check-${partIndex++}`}
+                            className="inline-flex items-center gap-0.5 px-1 py-0.5 rounded text-[10px] bg-green-600/20 text-green-400 align-middle mx-0.5"
+                            title={`${cost.name} is in budget`}
+                        >
+                            <Check size={10} />
+                            <DollarSign size={10} />
+                        </span>
+                    );
+                }
             }
 
             remaining = remaining.substring(idx + placeholder.length);
@@ -499,10 +596,10 @@ export default function ChatInterface() {
         return (
             <>
                 {elements.length > 0 ? elements : <span dangerouslySetInnerHTML={{ __html: processedContent.replace(/\n/g, '<br/>') }} />}
-                {isExtracting && (
+                {(isExtracting || isExtractingCosts) && (
                     <div className="mt-2 flex items-center gap-2 text-xs text-stone-500">
                         <Loader2 size={12} className="animate-spin" />
-                        {tMap('findingLocations')}
+                        {isExtracting ? tMap('findingLocations') : 'Finding costs...'}
                     </div>
                 )}
             </>
@@ -968,6 +1065,178 @@ export default function ChatInterface() {
                 onClose={() => setIsTripSetupOpen(false)}
                 chatId={activeChat.id}
             />
+
+            {/* Budget Item Edit Modal */}
+            <AnimatePresence>
+                {editingCost && (
+                    <motion.div
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4"
+                        onClick={() => setEditingCost(null)}
+                    >
+                        <motion.div
+                            initial={{ scale: 0.9, opacity: 0 }}
+                            animate={{ scale: 1, opacity: 1 }}
+                            exit={{ scale: 0.9, opacity: 0 }}
+                            className="bg-stone-800 rounded-xl p-6 w-full max-w-md border border-stone-700 shadow-2xl"
+                            onClick={e => e.stopPropagation()}
+                        >
+                            <div className="flex items-center justify-between mb-4">
+                                <h3 className="text-lg font-semibold flex items-center gap-2">
+                                    <DollarSign size={20} className="text-green-400" />
+                                    {tCosts('addItem')}
+                                </h3>
+                                <button
+                                    onClick={() => setEditingCost(null)}
+                                    className="text-stone-400 hover:text-stone-200 transition-colors"
+                                >
+                                    <X size={20} />
+                                </button>
+                            </div>
+
+                            <div className="space-y-4">
+                                {/* Name */}
+                                <div>
+                                    <label className="block text-xs text-stone-400 uppercase font-bold mb-1">
+                                        {tCosts('itemName')}
+                                    </label>
+                                    <input
+                                        type="text"
+                                        value={editingCost.name}
+                                        onChange={e => setEditingCost({ ...editingCost, name: e.target.value })}
+                                        className="w-full bg-stone-900 border border-stone-700 rounded-lg p-2 text-sm focus:outline-none focus:border-green-500 transition-colors"
+                                        placeholder="Hostel, Food, Transport..."
+                                    />
+                                </div>
+
+                                {/* Category */}
+                                <div>
+                                    <label className="block text-xs text-stone-400 uppercase font-bold mb-1">
+                                        {tCosts('category')}
+                                    </label>
+                                    <select
+                                        value={editingCost.category}
+                                        onChange={e => setEditingCost({ ...editingCost, category: e.target.value as CostCategory })}
+                                        className="w-full bg-stone-900 border border-stone-700 rounded-lg p-2 text-sm focus:outline-none focus:border-green-500 transition-colors"
+                                    >
+                                        <option value="accommodation">{tCosts('accommodation')}</option>
+                                        <option value="transport">{tCosts('transport')}</option>
+                                        <option value="food">{tCosts('food')}</option>
+                                        <option value="activities">{tCosts('activities')}</option>
+                                        <option value="visa">{tCosts('visa')}</option>
+                                        <option value="insurance">{tCosts('insurance')}</option>
+                                        <option value="gear">{tCosts('gear')}</option>
+                                        <option value="misc">{tCosts('misc')}</option>
+                                    </select>
+                                </div>
+
+                                {/* Amount & Quantity Row */}
+                                <div className="grid grid-cols-2 gap-3">
+                                    <div>
+                                        <label className="block text-xs text-stone-400 uppercase font-bold mb-1">
+                                            {tCosts('amount')} ($)
+                                        </label>
+                                        <input
+                                            type="number"
+                                            min="0"
+                                            step="0.01"
+                                            value={editingCost.amount}
+                                            onChange={e => setEditingCost({ ...editingCost, amount: parseFloat(e.target.value) || 0 })}
+                                            className="w-full bg-stone-900 border border-stone-700 rounded-lg p-2 text-sm focus:outline-none focus:border-green-500 transition-colors"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-xs text-stone-400 uppercase font-bold mb-1">
+                                            {tCosts('quantity')}
+                                        </label>
+                                        <input
+                                            type="number"
+                                            min="1"
+                                            value={editingCost.quantity}
+                                            onChange={e => setEditingCost({ ...editingCost, quantity: parseInt(e.target.value) || 1 })}
+                                            className="w-full bg-stone-900 border border-stone-700 rounded-lg p-2 text-sm focus:outline-none focus:border-green-500 transition-colors"
+                                        />
+                                    </div>
+                                </div>
+
+                                {/* Unit */}
+                                <div>
+                                    <label className="block text-xs text-stone-400 uppercase font-bold mb-1">
+                                        {tCosts('unit')}
+                                    </label>
+                                    <select
+                                        value={editingCost.unit}
+                                        onChange={e => setEditingCost({ ...editingCost, unit: e.target.value })}
+                                        className="w-full bg-stone-900 border border-stone-700 rounded-lg p-2 text-sm focus:outline-none focus:border-green-500 transition-colors"
+                                    >
+                                        <option value="night">{tCosts('perNight')}</option>
+                                        <option value="day">{tCosts('perDay')}</option>
+                                        <option value="trip">{tCosts('perTrip')}</option>
+                                        <option value="person">{tCosts('perPerson')}</option>
+                                        <option value="meal">{tCosts('perMeal')}</option>
+                                    </select>
+                                </div>
+
+                                {/* Notes */}
+                                <div>
+                                    <label className="block text-xs text-stone-400 uppercase font-bold mb-1">
+                                        {tCosts('notes')}
+                                    </label>
+                                    <textarea
+                                        value={editingCost.notes}
+                                        onChange={e => setEditingCost({ ...editingCost, notes: e.target.value })}
+                                        className="w-full bg-stone-900 border border-stone-700 rounded-lg p-2 text-sm focus:outline-none focus:border-green-500 transition-colors resize-none"
+                                        rows={2}
+                                        placeholder="Optional notes..."
+                                    />
+                                </div>
+
+                                {/* Total Preview */}
+                                <div className="bg-stone-900/50 rounded-lg p-3 border border-stone-700">
+                                    <div className="flex items-center justify-between">
+                                        <span className="text-stone-400 text-sm">{tCosts('total')}:</span>
+                                        <span className="text-lg font-bold text-green-400">
+                                            ${(editingCost.amount * editingCost.quantity).toFixed(2)}
+                                        </span>
+                                    </div>
+                                </div>
+
+                                {/* Action Buttons */}
+                                <div className="flex gap-3 pt-2">
+                                    <button
+                                        onClick={() => setEditingCost(null)}
+                                        className="flex-1 px-4 py-2 bg-stone-700 hover:bg-stone-600 rounded-lg text-sm font-medium transition-colors"
+                                    >
+                                        {t('cancel')}
+                                    </button>
+                                    <button
+                                        onClick={() => {
+                                            if (!activeChat || !editingCost.name.trim()) return;
+                                            addCostItem(activeChat.id, {
+                                                name: editingCost.name.trim(),
+                                                category: editingCost.category,
+                                                amount: editingCost.amount,
+                                                quantity: editingCost.quantity,
+                                                unit: editingCost.unit,
+                                                notes: editingCost.notes,
+                                            });
+                                            setAddedCosts(prev => new Set([...prev, editingCost.name.toLowerCase()]));
+                                            setEditingCost(null);
+                                        }}
+                                        disabled={!editingCost.name.trim() || editingCost.amount <= 0}
+                                        className="flex-1 px-4 py-2 bg-green-600 hover:bg-green-500 disabled:bg-stone-700 disabled:text-stone-500 rounded-lg text-sm font-medium transition-colors flex items-center justify-center gap-2"
+                                    >
+                                        <Plus size={16} />
+                                        {tCosts('addItem')}
+                                    </button>
+                                </div>
+                            </div>
+                        </motion.div>
+                    </motion.div>
+                )}
+            </AnimatePresence>
         </>
     );
 }

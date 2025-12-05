@@ -175,7 +175,8 @@
     "typeMessage": "Pregúntale a Sierra sobre tu viaje...",
     "send": "Enviar",
     "thinking": "Sierra está pensando...",
-    "aiDisclaimer": "Sierra puede cometer errores. Verifica la información importante antes de reservar."
+    "aiDisclaimer": "Sierra puede cometer errores. Verifica la información importante antes de reservar.",
+    "cancel": "Cancelar"
   },
   "map": {
     "title": "Mapa del Viaje",
@@ -190,15 +191,30 @@
     "dailyAverage": "Promedio Diario",
     "budgetRemaining": "Presupuesto Restante",
     "addExpense": "Agregar Gasto",
+    "addItem": "Agregar al Presupuesto",
+    "itemName": "Nombre del Item",
     "category": "Categoría",
     "amount": "Monto",
+    "quantity": "Cantidad",
+    "unit": "Unidad",
+    "notes": "Notas",
+    "total": "Total",
     "description": "Descripción",
     "accommodation": "Alojamiento",
     "food": "Comida",
     "transport": "Transporte",
     "activities": "Actividades",
+    "visa": "Visa",
+    "insurance": "Seguro",
+    "gear": "Equipo",
+    "misc": "Varios",
     "shopping": "Compras",
-    "other": "Otro"
+    "other": "Otro",
+    "perNight": "Por Noche",
+    "perDay": "Por Día",
+    "perTrip": "Por Viaje",
+    "perPerson": "Por Persona",
+    "perMeal": "Por Comida"
   },
   "bucketList": {
     "title": "Lista de Deseos",

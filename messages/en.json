@@ -175,7 +175,8 @@
     "typeMessage": "Ask Sierra about your trip...",
     "send": "Send",
     "thinking": "Sierra is thinking...",
-    "aiDisclaimer": "Sierra can make mistakes. Verify important info before booking."
+    "aiDisclaimer": "Sierra can make mistakes. Verify important info before booking.",
+    "cancel": "Cancel"
   },
   "map": {
     "title": "Trip Map",
@@ -190,15 +191,30 @@
     "dailyAverage": "Daily Average",
     "budgetRemaining": "Budget Remaining",
     "addExpense": "Add Expense",
+    "addItem": "Add to Budget",
+    "itemName": "Item Name",
     "category": "Category",
     "amount": "Amount",
+    "quantity": "Quantity",
+    "unit": "Unit",
+    "notes": "Notes",
+    "total": "Total",
     "description": "Description",
     "accommodation": "Accommodation",
     "food": "Food",
     "transport": "Transport",
     "activities": "Activities",
+    "visa": "Visa",
+    "insurance": "Insurance",
+    "gear": "Gear",
+    "misc": "Miscellaneous",
     "shopping": "Shopping",
-    "other": "Other"
+    "other": "Other",
+    "perNight": "Per Night",
+    "perDay": "Per Day",
+    "perTrip": "Per Trip",
+    "perPerson": "Per Person",
+    "perMeal": "Per Meal"
   },
   "bucketList": {
     "title": "Bucket List",

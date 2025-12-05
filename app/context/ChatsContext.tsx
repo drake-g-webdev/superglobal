@@ -80,6 +80,19 @@ export type CostCategory =
   | 'moped_rental'
   | 'misc';
 
+// Extracted costs from AI responses (for "Add to Budget" buttons)
+export interface ExtractedCost {
+  name: string;
+  category: CostCategory;
+  amount: number;
+  quantity: number;
+  unit: string;
+  notes: string;
+}
+
+// Maps message index -> extracted costs for that message
+export type MessageCosts = Record<number, ExtractedCost[]>;
+
 export interface CostItem {
   id: string;
   category: CostCategory;
@@ -309,6 +322,9 @@ export interface Chat {
   // Extracted locations from AI responses (persisted for "Add to Map" buttons)
   extractedLocations: MessageLocations;
 
+  // Extracted costs from AI responses (persisted for "Add to Budget" buttons)
+  extractedCosts: MessageCosts;
+
   // Costs
   tripCosts: TripCosts;
   touristTraps: TouristTrap[];
@@ -343,6 +359,8 @@ interface ChatsContextType {
   updateMapView: (chatId: string, center: [number, number], zoom?: number) => void;
   // Extracted locations functions (for "Add to Map" buttons)
   setExtractedLocations: (chatId: string, messageIndex: number, locations: ExtractedLocation[]) => void;
+  // Extracted costs functions (for "Add to Budget" buttons)
+  setExtractedCosts: (chatId: string, messageIndex: number, costs: ExtractedCost[]) => void;
   // Cost functions
   addCostItem: (chatId: string, item: Omit<CostItem, 'id'>) => void;
   addCostItems: (chatId: string, items: Omit<CostItem, 'id'>[]) => void;
@@ -428,6 +446,7 @@ function createNewChat(title?: string): Chat {
     mapCenter: undefined,
     mapZoom: undefined,
     extractedLocations: {},
+    extractedCosts: {},
     tripCosts: { ...defaultTripCosts },
     touristTraps: [],
     bucketList: [],
@@ -462,6 +481,7 @@ export function ChatsProvider({ children }: { children: ReactNode }) {
             mapCenter: chat.mapCenter ?? undefined,
             mapZoom: chat.mapZoom ?? undefined,
             extractedLocations: chat.extractedLocations ?? {},
+            extractedCosts: chat.extractedCosts ?? {},
             tripCosts: chat.tripCosts ?? { ...defaultTripCosts },
             touristTraps: chat.touristTraps ?? [],
             bucketList: chat.bucketList ?? [],
@@ -646,6 +666,22 @@ export function ChatsProvider({ children }: { children: ReactNode }) {
             extractedLocations: {
               ...chat.extractedLocations,
               [messageIndex]: locations,
+            },
+            updatedAt: Date.now(),
+          }
+        : chat
+    ));
+  };
+
+  // Extracted costs management (for "Add to Budget" buttons persistence)
+  const setExtractedCosts = (chatId: string, messageIndex: number, costs: ExtractedCost[]) => {
+    setChats(prev => prev.map(chat =>
+      chat.id === chatId
+        ? {
+            ...chat,
+            extractedCosts: {
+              ...chat.extractedCosts,
+              [messageIndex]: costs,
             },
             updatedAt: Date.now(),
           }
@@ -1119,6 +1155,7 @@ export function ChatsProvider({ children }: { children: ReactNode }) {
       clearMapPins,
       updateMapView,
       setExtractedLocations,
+      setExtractedCosts,
       addCostItem,
       addCostItems,
       updateCostItem,

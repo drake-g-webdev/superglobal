@@ -1221,6 +1221,7 @@ export default function ChatInterface() {
                                                 quantity: editingCost.quantity,
                                                 unit: editingCost.unit,
                                                 notes: editingCost.notes,
+                                                isEstimate: false,
                                             });
                                             setAddedCosts(prev => new Set([...prev, editingCost.name.toLowerCase()]));
                                             setEditingCost(null);

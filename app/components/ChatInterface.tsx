@@ -492,12 +492,19 @@ export default function ChatInterface() {
             }
         }
 
+        // Sort placeholders by their position in the text (so we process left-to-right)
+        const sortedPlaceholders = [...placeholders].sort((a, b) => {
+            const posA = processedContent.indexOf(a.placeholder);
+            const posB = processedContent.indexOf(b.placeholder);
+            return posA - posB;
+        });
+
         // Now split by placeholders and create React elements
         const elements: React.ReactNode[] = [];
         let remaining = processedContent;
         let partIndex = 0;
 
-        for (const { placeholder, type, data } of placeholders) {
+        for (const { placeholder, type, data } of sortedPlaceholders) {
             const idx = remaining.indexOf(placeholder);
             if (idx === -1) continue;
 

@@ -214,8 +214,8 @@ class ItineraryStop(BaseModel):
 class TripContext(BaseModel):
     # Trip Logistics
     itinerary_breakdown: list[ItineraryStop] = []
-    transportation_style: str = "mixed"  # bus, moto, hitchhike, flights, train, mixed
-    accommodation_style: str = "hostel_dorm"  # hostel_dorm, hostel_private, apartment, tent, van, guesthouse, couchsurfing, mixed
+    transportation_styles: list[str] = ["mixed"]  # bus, moto, hitchhike, flights, train
+    accommodation_styles: list[str] = ["hostel_dorm"]  # hostel_dorm, hostel_private, apartment, tent, van, guesthouse, couchsurfing
     daily_budget_target: int = 50
     trip_duration_days: int = 14
     start_date: Optional[str] = None
@@ -374,8 +374,10 @@ def build_trip_context_section(trip: Optional[TripContext], profile: Optional[Us
         sections.append(f"The user prefers responses in {trip.preferred_language}. Please respond entirely in {trip.preferred_language}.")
 
     # Transportation & Accommodation
-    sections.append(f"\nTransportation: {trip.transportation_style.replace('_', ' ')}")
-    sections.append(f"Accommodation: {trip.accommodation_style.replace('_', ' ')}")
+    transport_str = ', '.join([s.replace('_', ' ') for s in trip.transportation_styles]) if trip.transportation_styles else 'mixed'
+    accommodation_str = ', '.join([s.replace('_', ' ') for s in trip.accommodation_styles]) if trip.accommodation_styles else 'hostel dorm'
+    sections.append(f"\nTransportation: {transport_str}")
+    sections.append(f"Accommodation: {accommodation_str}")
 
     # Itinerary
     if trip.itinerary_breakdown:

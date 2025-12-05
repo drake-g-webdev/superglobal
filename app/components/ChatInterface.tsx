@@ -4,7 +4,7 @@ import { useState, useRef, useEffect, useCallback } from 'react';
 import { Send, MapPin, DollarSign, User, Settings, Compass, Calendar, Target, Map as MapIcon, Plus, Check, Loader2, MessageSquare, ChevronLeft, ChevronRight, Calculator, ListChecks, Backpack, CalendarDays, Mountain, Sailboat, Tent, Footprints } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import clsx from 'clsx';
-import { useChats, MapPinType, CostCategory } from '../context/ChatsContext';
+import { useChats, MapPinType, CostCategory, ExtractedLocation, MessageLocations } from '../context/ChatsContext';
 import { useProfile } from '../context/ProfileContext';
 import { useTranslations } from '../context/LocaleContext';
 import ChatSidebar from './ChatSidebar';
@@ -80,19 +80,8 @@ function ThinkingAnimation() {
     );
 }
 
-// Extracted location from AI
-interface ExtractedLocation {
-    name: string;
-    type: MapPinType;
-    description: string;
-    area: string; // The specific area/city/region this location is in (e.g., "Cotopaxi", "Quito Old Town")
-}
-
-// Locations extracted per message index
-type MessageLocations = Record<number, ExtractedLocation[]>;
-
 export default function ChatInterface() {
-    const { activeChat, updateChat, addMessage, addMapPin, addCostItems, addTouristTrap, updateMapView, mergeConversationVariables } = useChats();
+    const { activeChat, updateChat, addMessage, addMapPin, addCostItems, addTouristTrap, updateMapView, mergeConversationVariables, setExtractedLocations } = useChats();
     const { profile, isProfileSet } = useProfile();
     const t = useTranslations('chat');
     const tProfile = useTranslations('profile');
@@ -113,8 +102,7 @@ export default function ChatInterface() {
     const [addingLocation, setAddingLocation] = useState<string | null>(null);
     const [addedLocations, setAddedLocations] = useState<Set<string>>(new Set());
 
-    // AI-extracted locations per message, keyed by chatId
-    const [messageLocationsByChat, setMessageLocationsByChat] = useState<Record<string, MessageLocations>>({});
+    // Track in-flight location extraction requests
     const [extractingLocations, setExtractingLocations] = useState<Set<string>>(new Set()); // keyed by "chatId-msgIdx"
 
     // Global ref to track in-flight requests - never reset
@@ -122,8 +110,8 @@ export default function ChatInterface() {
 
     const messagesEndRef = useRef<HTMLDivElement>(null);
 
-    // Get locations for current chat
-    const messageLocations = activeChat ? (messageLocationsByChat[activeChat.id] || {}) : {};
+    // Get locations for current chat from persisted context (survives refresh)
+    const messageLocations = activeChat?.extractedLocations || {};
 
     // Update added locations when chat changes or pins change
     useEffect(() => {
@@ -170,13 +158,8 @@ export default function ChatInterface() {
                 }));
 
                 console.log('[Location Extraction] Extracted locations:', typedLocations.length, 'locations for message', messageIndex);
-                setMessageLocationsByChat(prev => ({
-                    ...prev,
-                    [chatId]: {
-                        ...(prev[chatId] || {}),
-                        [messageIndex]: typedLocations,
-                    },
-                }));
+                // Persist to context (survives refresh via localStorage)
+                setExtractedLocations(chatId, messageIndex, typedLocations);
             } else {
                 console.error('[Location Extraction] API error:', response.status, response.statusText);
             }
@@ -191,7 +174,7 @@ export default function ChatInterface() {
                 return next;
             });
         }
-    }, []);
+    }, [setExtractedLocations]);
 
     // Extract costs from a message using AI
     const extractCostsFromMessage = useCallback(async (messageContent: string, messageIndex: number, chatId: string, destination: string) => {
@@ -578,8 +561,8 @@ export default function ChatInterface() {
             } : null,
             trip_context: activeChat.tripSetupComplete ? {
                 itinerary_breakdown: activeChat.tripContext.itineraryBreakdown,
-                transportation_style: activeChat.tripContext.transportationStyle,
-                accommodation_style: activeChat.tripContext.accommodationStyle,
+                transportation_styles: activeChat.tripContext.transportationStyles,
+                accommodation_styles: activeChat.tripContext.accommodationStyles,
                 daily_budget_target: activeChat.tripContext.dailyBudgetTarget,
                 trip_duration_days: activeChat.tripContext.tripDurationDays,
                 start_date: activeChat.tripContext.startDate,

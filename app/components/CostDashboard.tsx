@@ -8,19 +8,11 @@ import {
 } from 'lucide-react';
 import clsx from 'clsx';
 import { useChats, CostCategory, CostItem, TouristTrap } from '../context/ChatsContext';
-import { useProfile } from '../context/ProfileContext';
 import { useTranslations } from '../context/LocaleContext';
 import { Users } from 'lucide-react';
 
-// Map travel style to number of travelers
-const TRAVEL_STYLE_COUNT: Record<string, number> = {
-  solo: 1,
-  couple: 2,
-  group: 4,
-  family: 4,
-};
-
 // Categories where cost is per-person (tickets, flights, activities, food)
+// NOTE: Accommodation is NOT included - shared costs like apartment rentals should not be multiplied
 const PER_PERSON_CATEGORIES: CostCategory[] = [
   'transport_flights',
   'activities',
@@ -72,7 +64,6 @@ const defaultFormState: AddCostFormState = {
 
 export default function CostDashboard() {
   const { activeChat, addCostItem, updateCostItem, removeCostItem, clearCostItems, removeTouristTrap } = useChats();
-  const { profile } = useProfile();
   const t = useTranslations('costs');
   const [isAddingCost, setIsAddingCost] = useState(false);
   const [editingItemId, setEditingItemId] = useState<string | null>(null);
@@ -85,9 +76,9 @@ export default function CostDashboard() {
   const touristTraps = activeChat?.touristTraps || [];
   const tripDays = activeChat?.tripContext?.tripDurationDays || 14;
 
-  // Get traveler count from profile
-  const travelerCount = TRAVEL_STYLE_COUNT[profile.travelStyle] || 1;
-  const travelStyleLabel = profile.travelStyle.charAt(0).toUpperCase() + profile.travelStyle.slice(1);
+  // Get traveler count from trip context (per-trip setting)
+  const travelerCount = activeChat?.tripContext?.travelerCount || 1;
+  const travelerLabel = travelerCount === 1 ? 'Solo' : travelerCount === 2 ? 'Couple' : `Group of ${travelerCount}`;
 
   // Helper to calculate item cost with traveler multiplier
   const getItemCost = (item: CostItem) => {
@@ -120,6 +111,11 @@ export default function CostDashboard() {
   const dailyAverage = useMemo(() => {
     return tripDays > 0 ? grandTotal / tripDays : 0;
   }, [grandTotal, tripDays]);
+
+  // Calculate cost per person (total / travelers)
+  const costPerPerson = useMemo(() => {
+    return travelerCount > 1 ? grandTotal / travelerCount : grandTotal;
+  }, [grandTotal, travelerCount]);
 
   // Items grouped by category
   const itemsByCategory = useMemo(() => {
@@ -232,8 +228,8 @@ export default function CostDashboard() {
           >
             <Users size={12} />
             {applyTravelerMultiplier
-              ? `${travelStyleLabel} (${travelerCount}x for tickets/flights/food)`
-              : `${travelStyleLabel} mode off - showing per-person`
+              ? `${travelerLabel} (${travelerCount}x for tickets/flights/food)`
+              : `${travelerLabel} mode off - showing per-person`
             }
           </button>
         )}
@@ -250,6 +246,14 @@ export default function CostDashboard() {
               <p className="text-lg font-semibold text-orange-400">${dailyAverage.toFixed(0)}/{t('dailyAverage').split(' ')[0].toLowerCase()}</p>
             </div>
           </div>
+
+          {/* Cost per person (only show when traveling with others) */}
+          {travelerCount > 1 && (
+            <div className="mt-2 pt-2 border-t border-orange-500/20 flex items-center justify-between">
+              <span className="text-xs text-stone-400">Cost per person</span>
+              <span className="text-sm font-medium text-blue-400">${costPerPerson.toFixed(0)} each</span>
+            </div>
+          )}
 
           {/* Mini category breakdown bar */}
           {grandTotal > 0 && (

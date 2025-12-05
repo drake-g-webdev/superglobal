@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect } from 'react';
-import { Globe, Check, ChevronDown } from 'lucide-react';
+import { Check, ChevronDown } from 'lucide-react';
 import { useLocale, Locale } from '../context/LocaleContext';
 import clsx from 'clsx';
 
@@ -61,7 +61,6 @@ export default function LanguageSelector({ variant = 'dropdown', className }: La
         onClick={() => setIsOpen(!isOpen)}
         className="flex items-center gap-2 px-3 py-2 bg-stone-800 hover:bg-stone-700 border border-stone-700 rounded-lg transition-colors"
       >
-        <Globe size={16} className="text-orange-500" />
         <span className="text-sm">{currentLanguage.flag} {currentLanguage.name}</span>
         <ChevronDown
           size={14}

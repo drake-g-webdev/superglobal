@@ -13,7 +13,7 @@ export interface Message {
 
 // Trip Logistics Types
 export type TransportationStyle = 'bus' | 'moto' | 'hitchhike' | 'flights' | 'train' | 'mixed';
-export type AccommodationStyle = 'hostel_dorm' | 'hostel_private' | 'tent' | 'van' | 'guesthouse' | 'apartment' | 'couchsurfing' | 'mixed';
+export type AccommodationStyle = 'hostel_dorm' | 'hotel' | 'tent' | 'van' | 'guesthouse' | 'apartment' | 'couchsurfing' | 'mixed';
 
 // Trip Goals
 export type TripGoal =
@@ -42,6 +42,17 @@ export interface ItineraryStop {
 // ============================================
 
 export type MapPinType = 'hostel' | 'restaurant' | 'activity' | 'landmark' | 'transport' | 'other';
+
+// Extracted locations from AI responses (for "Add to Map" buttons)
+export interface ExtractedLocation {
+  name: string;
+  type: MapPinType;
+  description: string;
+  area: string;
+}
+
+// Maps message index -> extracted locations for that message
+export type MessageLocations = Record<number, ExtractedLocation[]>;
 
 export interface MapPin {
   id: string;
@@ -216,13 +227,16 @@ export const defaultConversationVariables: ConversationVariables = {
 export interface TripContext {
   // Trip Logistics
   itineraryBreakdown: ItineraryStop[];
-  transportationStyle: TransportationStyle;
-  accommodationStyle: AccommodationStyle;
+  transportationStyles: TransportationStyle[];
+  accommodationStyles: AccommodationStyle[];
   dailyBudgetTarget: number; // USD
   tripDurationDays: number;
   startDate?: string; // ISO date string
   dealBreakers: string[]; // e.g., "no overnight buses", "no moldy hostels"
   preferredLanguage: string; // e.g., "Spanish", "English"
+
+  // Traveler count for this specific trip
+  travelerCount: number; // Number of travelers (1 for solo, 2 for couple, etc.)
 
   // Safety Profile (Trip-specific overrides)
   walkAtNightOverride?: boolean;
@@ -247,13 +261,14 @@ export interface TripContext {
 
 export const defaultTripContext: TripContext = {
   itineraryBreakdown: [],
-  transportationStyle: 'mixed',
-  accommodationStyle: 'hostel_dorm',
+  transportationStyles: ['mixed'],
+  accommodationStyles: ['hostel_dorm'],
   dailyBudgetTarget: 50,
   tripDurationDays: 14,
   startDate: undefined,
   dealBreakers: [],
   preferredLanguage: 'English',
+  travelerCount: 1, // Default to solo traveler
 
   walkAtNightOverride: undefined,
   experiencedMotosOverride: undefined,
@@ -290,6 +305,9 @@ export interface Chat {
   mapCenter?: [number, number]; // [lng, lat]
   mapZoom?: number;
 
+  // Extracted locations from AI responses (persisted for "Add to Map" buttons)
+  extractedLocations: MessageLocations;
+
   // Costs
   tripCosts: TripCosts;
   touristTraps: TouristTrap[];
@@ -322,6 +340,8 @@ interface ChatsContextType {
   removeMapPin: (chatId: string, pinId: string) => void;
   clearMapPins: (chatId: string) => void;
   updateMapView: (chatId: string, center: [number, number], zoom?: number) => void;
+  // Extracted locations functions (for "Add to Map" buttons)
+  setExtractedLocations: (chatId: string, messageIndex: number, locations: ExtractedLocation[]) => void;
   // Cost functions
   addCostItem: (chatId: string, item: Omit<CostItem, 'id'>) => void;
   addCostItems: (chatId: string, items: Omit<CostItem, 'id'>[]) => void;
@@ -400,6 +420,7 @@ function createNewChat(title?: string): Chat {
     mapPins: [],
     mapCenter: undefined,
     mapZoom: undefined,
+    extractedLocations: {},
     tripCosts: { ...defaultTripCosts },
     touristTraps: [],
     bucketList: [],
@@ -429,6 +450,7 @@ export function ChatsProvider({ children }: { children: ReactNode }) {
             mapPins: chat.mapPins ?? [],
             mapCenter: chat.mapCenter ?? undefined,
             mapZoom: chat.mapZoom ?? undefined,
+            extractedLocations: chat.extractedLocations ?? {},
             tripCosts: chat.tripCosts ?? { ...defaultTripCosts },
             touristTraps: chat.touristTraps ?? [],
             bucketList: chat.bucketList ?? [],
@@ -591,6 +613,22 @@ export function ChatsProvider({ children }: { children: ReactNode }) {
     setChats(prev => prev.map(chat =>
       chat.id === chatId
         ? { ...chat, mapCenter: center, mapZoom: zoom ?? chat.mapZoom, updatedAt: Date.now() }
+        : chat
+    ));
+  };
+
+  // Extracted locations management (for "Add to Map" buttons persistence)
+  const setExtractedLocations = (chatId: string, messageIndex: number, locations: ExtractedLocation[]) => {
+    setChats(prev => prev.map(chat =>
+      chat.id === chatId
+        ? {
+            ...chat,
+            extractedLocations: {
+              ...chat.extractedLocations,
+              [messageIndex]: locations,
+            },
+            updatedAt: Date.now(),
+          }
         : chat
     ));
   };
@@ -1060,6 +1098,7 @@ export function ChatsProvider({ children }: { children: ReactNode }) {
       removeMapPin,
       clearMapPins,
       updateMapView,
+      setExtractedLocations,
       addCostItem,
       addCostItems,
       updateCostItem,

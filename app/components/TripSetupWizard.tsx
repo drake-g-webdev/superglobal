@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from 'react';
-import { X, Plus, Calendar, DollarSign, Compass, ChevronLeft, ChevronRight, Check, Trash2 } from 'lucide-react';
+import { X, Plus, Calendar, DollarSign, Compass, ChevronLeft, ChevronRight, Check, Trash2, Users, Minus } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import clsx from 'clsx';
 import { useChats, TripContext, TransportationStyle, AccommodationStyle, TripGoal, ItineraryStop } from '../context/ChatsContext';
@@ -69,7 +69,7 @@ const TRANSPORTATION_OPTIONS: { value: TransportationStyle; label: string; emoji
 
 const ACCOMMODATION_OPTIONS: { value: AccommodationStyle; label: string; emoji: string }[] = [
   { value: 'hostel_dorm', label: 'Hostel Dorm', emoji: '🛏️' },
-  { value: 'hostel_private', label: 'Hostel Private', emoji: '🚪' },
+  { value: 'hotel', label: 'Hotel', emoji: '🏨' },
   { value: 'apartment', label: 'Apartment', emoji: '🏢' },
   { value: 'guesthouse', label: 'Guesthouse', emoji: '🏠' },
   { value: 'tent', label: 'Camping', emoji: '⛺' },
@@ -129,8 +129,8 @@ export default function TripSetupWizard({ isOpen, onClose, chatId }: TripSetupWi
   const [showDestinationSuggestions, setShowDestinationSuggestions] = useState(false);
   const [itinerary, setItinerary] = useState<ItineraryStop[]>([]);
   const [newStop, setNewStop] = useState({ location: '', days: 3, notes: '' });
-  const [transportationStyle, setTransportationStyle] = useState<TransportationStyle>('mixed');
-  const [accommodationStyle, setAccommodationStyle] = useState<AccommodationStyle>('hostel_dorm');
+  const [transportationStyles, setTransportationStyles] = useState<TransportationStyle[]>(['mixed']);
+  const [accommodationStyles, setAccommodationStyles] = useState<AccommodationStyle[]>(['hostel_dorm']);
   const [dailyBudget, setDailyBudget] = useState('50');
   const [tripDuration, setTripDuration] = useState('14');
   const [startDate, setStartDate] = useState('');
@@ -139,6 +139,18 @@ export default function TripSetupWizard({ isOpen, onClose, chatId }: TripSetupWi
   const [tripGoals, setTripGoals] = useState<TripGoal[]>([]);
   const [customGoals, setCustomGoals] = useState<string[]>([]);
   const [newCustomGoal, setNewCustomGoal] = useState('');
+  const [travelerCount, setTravelerCount] = useState(1);
+
+  // Map profile travel style to default traveler count
+  const getDefaultTravelerCount = () => {
+    switch (profile.travelStyle) {
+      case 'solo': return 1;
+      case 'couple': return 2;
+      case 'group': return 4;
+      case 'family': return 4;
+      default: return 1;
+    }
+  };
 
   // Load existing trip context when opening
   useEffect(() => {
@@ -146,14 +158,19 @@ export default function TripSetupWizard({ isOpen, onClose, chatId }: TripSetupWi
       const ctx = activeChat.tripContext;
       setDestination(activeChat.destination || '');
       setItinerary(ctx.itineraryBreakdown || []);
-      setTransportationStyle(ctx.transportationStyle || 'mixed');
-      setAccommodationStyle(ctx.accommodationStyle || 'hostel_dorm');
+      // Handle both old single-value and new array format for backwards compatibility
+      const oldTransportStyle = (ctx as { transportationStyle?: TransportationStyle }).transportationStyle;
+      const oldAccomStyle = (ctx as { accommodationStyle?: AccommodationStyle }).accommodationStyle;
+      setTransportationStyles(ctx.transportationStyles?.length ? ctx.transportationStyles : (oldTransportStyle ? [oldTransportStyle] : ['mixed']));
+      setAccommodationStyles(ctx.accommodationStyles?.length ? ctx.accommodationStyles : (oldAccomStyle ? [oldAccomStyle] : ['hostel_dorm']));
       setDailyBudget(String(ctx.dailyBudgetTarget || 50));
       setTripDuration(String(ctx.tripDurationDays || 14));
       setStartDate(ctx.startDate || '');
       setDealBreakers(ctx.dealBreakers || []);
       setTripGoals(ctx.tripGoals || []);
       setCustomGoals(ctx.customGoals || []);
+      // Load traveler count from trip context, or default from profile
+      setTravelerCount(ctx.travelerCount || getDefaultTravelerCount());
       setStep(0);
     }
   }, [isOpen, activeChat]);
@@ -205,14 +222,15 @@ export default function TripSetupWizard({ isOpen, onClose, chatId }: TripSetupWi
     // Update trip context
     updateTripContext(chatId, {
       itineraryBreakdown: itinerary,
-      transportationStyle,
-      accommodationStyle,
+      transportationStyles,
+      accommodationStyles,
       dailyBudgetTarget: parseInt(dailyBudget) || 50,
       tripDurationDays: parseInt(tripDuration) || 14,
       startDate: startDate || undefined,
       dealBreakers,
       tripGoals,
       customGoals,
+      travelerCount,
     });
 
     markTripSetupComplete(chatId);
@@ -313,6 +331,38 @@ export default function TripSetupWizard({ isOpen, onClose, chatId }: TripSetupWi
                 />
               </div>
 
+              {/* Traveler Count */}
+              <div>
+                <label className="text-xs text-stone-400 uppercase font-bold mb-1 block">Number of Travelers</label>
+                <div className="flex items-center gap-4">
+                  <div className="flex items-center bg-stone-800 border border-stone-700 rounded-lg overflow-hidden">
+                    <button
+                      type="button"
+                      onClick={() => setTravelerCount(Math.max(1, travelerCount - 1))}
+                      className="px-4 py-3 hover:bg-stone-700 transition-colors disabled:opacity-50"
+                      disabled={travelerCount <= 1}
+                    >
+                      <Minus size={16} />
+                    </button>
+                    <span className="px-6 py-3 font-bold text-lg min-w-[60px] text-center">{travelerCount}</span>
+                    <button
+                      type="button"
+                      onClick={() => setTravelerCount(travelerCount + 1)}
+                      className="px-4 py-3 hover:bg-stone-700 transition-colors"
+                    >
+                      <Plus size={16} />
+                    </button>
+                  </div>
+                  <div className="flex items-center gap-2 text-sm text-stone-400">
+                    <Users size={16} className="text-orange-500" />
+                    <span>
+                      {travelerCount === 1 ? 'Solo' : travelerCount === 2 ? 'Couple/Duo' : `Group of ${travelerCount}`}
+                    </span>
+                  </div>
+                </div>
+                <p className="text-xs text-stone-500 mt-1">Affects cost calculations for tickets, flights, food, etc.</p>
+              </div>
+
             </div>
           </div>
         );
@@ -411,13 +461,24 @@ export default function TripSetupWizard({ isOpen, onClose, chatId }: TripSetupWi
 
             <div className="space-y-6">
               <div>
-                <label className="text-xs text-stone-400 uppercase font-bold mb-3 block">{t('transportationStyle')}</label>
+                <label className="text-xs text-stone-400 uppercase font-bold mb-1 block">{t('transportationStyle')}</label>
+                <p className="text-xs text-stone-500 mb-3">Select all that apply</p>
                 <div className="grid grid-cols-3 gap-2">
-                  {TRANSPORTATION_OPTIONS.map(opt => (
+                  {TRANSPORTATION_OPTIONS.filter(opt => opt.value !== 'mixed').map(opt => (
                     <ToggleChip
                       key={opt.value}
-                      selected={transportationStyle === opt.value}
-                      onClick={() => setTransportationStyle(opt.value)}
+                      selected={transportationStyles.includes(opt.value)}
+                      onClick={() => {
+                        if (transportationStyles.includes(opt.value)) {
+                          // Remove if already selected (but keep at least one)
+                          if (transportationStyles.length > 1) {
+                            setTransportationStyles(transportationStyles.filter(s => s !== opt.value));
+                          }
+                        } else {
+                          // Add to selection (and remove 'mixed' if present)
+                          setTransportationStyles([...transportationStyles.filter(s => s !== 'mixed'), opt.value]);
+                        }
+                      }}
                     >
                       {opt.emoji} {opt.label}
                     </ToggleChip>
@@ -426,13 +487,24 @@ export default function TripSetupWizard({ isOpen, onClose, chatId }: TripSetupWi
               </div>
 
               <div>
-                <label className="text-xs text-stone-400 uppercase font-bold mb-3 block">{t('accommodationStyle')}</label>
+                <label className="text-xs text-stone-400 uppercase font-bold mb-1 block">{t('accommodationStyle')}</label>
+                <p className="text-xs text-stone-500 mb-3">Select all that apply</p>
                 <div className="grid grid-cols-2 gap-2">
-                  {ACCOMMODATION_OPTIONS.map(opt => (
+                  {ACCOMMODATION_OPTIONS.filter(opt => opt.value !== 'mixed').map(opt => (
                     <ToggleChip
                       key={opt.value}
-                      selected={accommodationStyle === opt.value}
-                      onClick={() => setAccommodationStyle(opt.value)}
+                      selected={accommodationStyles.includes(opt.value)}
+                      onClick={() => {
+                        if (accommodationStyles.includes(opt.value)) {
+                          // Remove if already selected (but keep at least one)
+                          if (accommodationStyles.length > 1) {
+                            setAccommodationStyles(accommodationStyles.filter(s => s !== opt.value));
+                          }
+                        } else {
+                          // Add to selection (and remove 'mixed' if present)
+                          setAccommodationStyles([...accommodationStyles.filter(s => s !== 'mixed'), opt.value]);
+                        }
+                      }}
                     >
                       {opt.emoji} {opt.label}
                     </ToggleChip>

@@ -593,9 +593,51 @@ export default function ChatInterface() {
             );
         }
 
+        // Find costs that weren't matched inline (for fallback display)
+        const unmatchedCosts = costs.filter(cost => {
+            const costKey = `${cost.name.toLowerCase()}-${cost.amount}`;
+            return !shownCosts.has(costKey);
+        });
+
         return (
             <>
                 {elements.length > 0 ? elements : <span dangerouslySetInnerHTML={{ __html: processedContent.replace(/\n/g, '<br/>') }} />}
+                {/* Show unmatched costs as a row at the end */}
+                {unmatchedCosts.length > 0 && (
+                    <div className="mt-2 flex flex-wrap gap-2 items-center">
+                        <span className="text-[10px] text-stone-500 uppercase font-bold">Costs mentioned:</span>
+                        {unmatchedCosts.map((cost, idx) => {
+                            const isInBudget = isCostInBudget(cost.name) || addedCosts.has(cost.name.toLowerCase());
+                            if (isInBudget) {
+                                return (
+                                    <span
+                                        key={`unmatched-cost-${idx}`}
+                                        className="inline-flex items-center gap-1 px-2 py-1 rounded text-[11px] bg-green-600/20 text-green-400"
+                                        title={`${cost.name} is in budget`}
+                                    >
+                                        <Check size={12} />
+                                        <DollarSign size={12} />
+                                        <span>{cost.name}</span>
+                                        <span className="text-green-300">${cost.amount}</span>
+                                    </span>
+                                );
+                            }
+                            return (
+                                <button
+                                    key={`unmatched-cost-${idx}`}
+                                    onClick={() => openCostEditModal(cost, messageIndex)}
+                                    className="inline-flex items-center gap-1 px-2 py-1 rounded text-[11px] transition-colors bg-green-600/30 hover:bg-green-600/50 text-green-400 hover:text-green-300 border border-green-500/30"
+                                    title={`Add ${cost.name} ($${cost.amount}) to budget`}
+                                >
+                                    <Plus size={12} />
+                                    <DollarSign size={12} />
+                                    <span>{cost.name}</span>
+                                    <span className="text-green-300">${cost.amount}</span>
+                                </button>
+                            );
+                        })}
+                    </div>
+                )}
                 {(isExtracting || isExtractingCosts) && (
                     <div className="mt-2 flex items-center gap-2 text-xs text-stone-500">
                         <Loader2 size={12} className="animate-spin" />

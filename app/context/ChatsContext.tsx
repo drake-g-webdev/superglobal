@@ -647,10 +647,13 @@ export function ChatsProvider({ children }: { children: ReactNode }) {
   // Load chats from localStorage for the current user
   const loadChatsForUser = useCallback(async (uid: string | null | undefined) => {
     const storageKey = getStorageKey(uid);
+    console.log('[ChatsContext] Loading chats for user:', uid, 'storageKey:', storageKey);
 
     // If user is authenticated, try to load from database first
     if (uid) {
+      console.log('[ChatsContext] Trying database first...');
       const dbChats = await loadFromDatabase();
+      console.log('[ChatsContext] Database returned:', dbChats?.length ?? 'null', 'chats');
       if (dbChats && dbChats.length > 0) {
         setChats(dbChats);
         setActiveChatId(dbChats[0].id);
@@ -661,7 +664,9 @@ export function ChatsProvider({ children }: { children: ReactNode }) {
     }
 
     // Fall back to localStorage
+    console.log('[ChatsContext] Falling back to localStorage...');
     const stored = localStorage.getItem(storageKey);
+    console.log('[ChatsContext] localStorage has data:', !!stored);
     if (stored) {
       try {
         const parsed = JSON.parse(stored);
@@ -721,7 +726,13 @@ export function ChatsProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (isLoaded && status !== 'loading') {
       const storageKey = getStorageKey(userId);
-      localStorage.setItem(storageKey, JSON.stringify({ chats, activeChatId }));
+      // Only save if we have actual chats to save (avoid overwriting with empty data)
+      if (chats.length > 0) {
+        console.log('[ChatsContext] Saving to localStorage:', storageKey, 'chats:', chats.length, 'messages in first chat:', chats[0]?.messages?.length);
+        localStorage.setItem(storageKey, JSON.stringify({ chats, activeChatId }));
+      } else {
+        console.log('[ChatsContext] Skipping save - no chats to save');
+      }
 
       // Debounced sync to database for authenticated users
       if (userId) {

@@ -600,10 +600,35 @@ export function ChatsProvider({ children }: { children: ReactNode }) {
 
     setIsSyncing(true);
     try {
-      // Only sync chats that have tripId (have been saved to DB)
       for (const chat of allChats) {
         if (chat.tripId) {
+          // Chat already exists in DB - update it
           await syncChatToDatabase(chat);
+        } else {
+          // Chat doesn't exist in DB yet - create it
+          try {
+            const response = await fetch('/api/chats', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                title: chat.title,
+                destination: chat.destination,
+                budget: chat.budget,
+              }),
+            });
+
+            if (response.ok) {
+              const data = await response.json();
+              // Update local chat with tripId so future syncs work
+              chat.tripId = data.tripId;
+              console.log('[Sync] Created new chat in DB:', chat.id, '-> tripId:', data.tripId);
+
+              // Now sync the full chat data
+              await syncChatToDatabase(chat);
+            }
+          } catch (e) {
+            console.error('[Sync] Failed to create chat in DB:', e);
+          }
         }
       }
     } finally {
@@ -643,6 +668,7 @@ export function ChatsProvider({ children }: { children: ReactNode }) {
             mapZoom: chat.mapZoom ?? undefined,
             extractedLocations: chat.extractedLocations ?? {},
             extractedCosts: chat.extractedCosts ?? {},
+            extractedItineraries: chat.extractedItineraries ?? {},
             tripCosts: chat.tripCosts ?? { ...defaultTripCosts },
             touristTraps: chat.touristTraps ?? [],
             bucketList: chat.bucketList ?? [],

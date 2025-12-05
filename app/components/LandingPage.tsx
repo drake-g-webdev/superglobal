@@ -12,7 +12,7 @@ export default function LandingPage() {
         <div className="absolute inset-0 bg-gradient-to-br from-orange-600/20 via-stone-900 to-stone-900" />
 
         {/* Navigation */}
-        <nav className="relative z-10 flex items-center justify-between px-6 py-4 max-w-6xl mx-auto">
+        <nav className="relative z-10 flex items-center justify-center md:justify-between px-6 py-4 max-w-6xl mx-auto">
           <div className="flex items-center gap-2 font-mono">
             <Globe size={24} className="text-orange-500" />
             <span className="font-semibold text-lg">superglobal.travel</span>

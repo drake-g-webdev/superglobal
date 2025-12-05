@@ -372,8 +372,8 @@ export default function ChatInterface() {
         }
     }, [setExtractedItinerary]);
 
-    // Add extracted itinerary to trip context
-    const addItineraryToTrip = useCallback((messageIndex: number) => {
+    // Add extracted itinerary to trip context and map
+    const addItineraryToTrip = useCallback(async (messageIndex: number) => {
         if (!activeChat) return;
 
         const extractedItinerary = activeChat.extractedItineraries?.[messageIndex];
@@ -387,7 +387,58 @@ export default function ChatInterface() {
 
         setAddedItineraryFromMessage(messageIndex);
         console.log('[Add Itinerary] Added', extractedItinerary.stops.length, 'stops to trip');
-    }, [activeChat, updateTripContext]);
+
+        // Also add each stop to the map as a city pin
+        const destination = activeChat.destination || 'World';
+        let firstCoords: [number, number] | null = null;
+
+        for (const stop of extractedItinerary.stops) {
+            // Skip if already on map
+            const nameLower = stop.location.toLowerCase();
+            if (activeChat.mapPins.some(pin => pin.name.toLowerCase() === nameLower)) {
+                console.log('[Add Itinerary] Stop already on map:', stop.location);
+                continue;
+            }
+
+            try {
+                const geocodeResponse = await fetch(`${API_URL}/api/geocode`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        place_name: stop.location,
+                        context: destination,
+                    }),
+                });
+
+                if (geocodeResponse.ok) {
+                    const geocodeData = await geocodeResponse.json();
+                    if (geocodeData.success && geocodeData.coordinates) {
+                        const coords = geocodeData.coordinates as [number, number];
+                        addMapPin(activeChat.id, {
+                            name: stop.location,
+                            type: 'city',
+                            description: stop.notes || `${stop.days} days`,
+                            coordinates: coords,
+                            sourceMessageIndex: messageIndex,
+                        });
+                        console.log('[Add Itinerary] Added to map:', stop.location, coords);
+
+                        // Save first coordinates to center map
+                        if (!firstCoords) {
+                            firstCoords = coords;
+                        }
+                    }
+                }
+            } catch (e) {
+                console.error('[Add Itinerary] Failed to geocode:', stop.location, e);
+            }
+        }
+
+        // Center map on first stop if we added any
+        if (firstCoords) {
+            updateMapView(activeChat.id, firstCoords, 6); // Zoom out to see the route
+        }
+    }, [activeChat, updateTripContext, addMapPin, updateMapView]);
 
     // No auto-extraction effect - we trigger extraction directly after receiving a response
 

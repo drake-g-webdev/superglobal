@@ -1391,70 +1391,64 @@ class ExtractCostsResponse(BaseModel):
     tourist_traps: list[TouristTrapWarning]
 
 
-COST_EXTRACTION_PROMPT = """Extract all specific costs and tourist trap warnings from this travel advice text.
+COST_EXTRACTION_PROMPT = """Extract SPECIFIC, NAMED costs from this travel advice text. Only extract costs tied to identifiable items.
 
 NUMBER OF TRAVELERS: {num_travelers}
 
-COSTS: Extract any specific price mentions with:
-- category: One of: accommodation, transport_local, transport_flights, food, activities, visa_border, sim_connectivity, moped_rental, misc
-- name: What the cost is for (e.g., "Hostel dorm bed", "Bus to Cotopaxi", "Local SIM card")
-- amount: The UNIT PRICE in USD (the price for ONE unit - one night, one day, one month, etc.)
-- quantity: The NUMBER of units mentioned (e.g., "5 nights" = quantity 5, "3 months" = quantity 3)
-- unit: One of: night, day, meal, trip, person, month, week
-- notes: Any relevant context
-- text_to_match: The EXACT text snippet from the original that identifies where this cost is mentioned (this is used to place an "Add to Budget" button). Pick a unique, specific phrase like "Standard Plan: Approximately $241" or "World Nomads Explorer Plan" - NOT just "$241" which might appear multiple times.
+WHAT TO EXTRACT (costs with SPECIFIC NAMES):
+✅ "Secret Garden Hostel: $15/night" → Extract (named hostel)
+✅ "Quilotoa Loop bus ticket: $5" → Extract (named route/service)
+✅ "Cotopaxi guided climb: $180" → Extract (named activity)
+✅ "World Nomads Explorer Plan: $356" → Extract (named product)
+✅ "Claro SIM card: $10" → Extract (named brand/product)
+✅ "Swing at the End of the World entrance: $5" → Extract (named attraction)
 
-TOURIST TRAPS: Extract any warnings about scams, overpriced places, or things to avoid with:
-- name: The name of the trap/scam
+WHAT NOT TO EXTRACT (vague/general mentions):
+❌ "budget around $50/day" → Skip (general guidance, not a specific item)
+❌ "food costs about $10-15" → Skip (range without specific item)
+❌ "expect to spend $30 on accommodation" → Skip (no specific hostel named)
+❌ "transport will run you about $20" → Skip (no specific service named)
+❌ "you can get by on $40/day" → Skip (general daily budget)
+❌ "allocate $500 for activities" → Skip (category total, not specific items)
+
+For each NAMED cost found, provide:
+- category: One of: accommodation, transport_local, transport_flights, food, activities, visa_border, sim_connectivity, moped_rental, misc
+- name: The SPECIFIC name (hostel name, tour name, restaurant name, product name)
+- amount: Unit price in USD
+- quantity: Number of units (nights, days, people, etc.)
+- unit: One of: night, day, meal, trip, person, month, week
+- notes: Brief context
+- text_to_match: EXACT unique phrase from the text where this cost appears (for button placement)
+
+TOURIST TRAPS: Extract warnings about scams or overpriced places:
+- name: The trap/scam name
 - description: What to watch out for
-- location: Where this applies (optional)
+- location: Where (optional)
 
 CRITICAL RULES:
-1. Only extract SPECIFIC prices with actual numbers mentioned
-2. Convert local currencies to USD using approximate rates
-3. Don't invent prices - only extract what's explicitly stated
-4. IMPORTANT: Parse quantities correctly from text like:
-   - "5 nights x $30" → amount: 30, quantity: 5, unit: "night"
-   - "3 months x $300" → amount: 300, quantity: 3, unit: "month"
-   - "$900 for 3 months" → amount: 300, quantity: 3, unit: "month" (divide total by quantity)
-   - "$150 for 5 nights" → amount: 30, quantity: 5, unit: "night"
-   - "90 days x $50/day" → amount: 50, quantity: 90, unit: "day"
-   - "$4,500 for 90 days" → amount: 50, quantity: 90, unit: "day"
-5. When a total is given with a unit count, calculate the unit price (total ÷ quantity = amount)
-6. For apartments/long-term rentals, use "month" as the unit
-7. For daily budget/expenses that apply to the whole trip, use the FULL trip duration as quantity
-8. "Daily Expenses" or "Daily Budget" covering food/transport for the whole trip should use category "food" since it's the main cost
-9. Tourist traps should be genuine warnings from the text
-10. DO NOT DOUBLE COUNT - If the text mentions both "groceries" AND "eating out" as separate costs, keep them separate. But do NOT create a third "Daily Expenses (Food)" item that duplicates them.
-11. DEDUPLICATION: If a weekly cost is mentioned, convert it: "$20/week" for 12 weeks = $20 x 12 = $240 total, NOT $20 x 90 meals
-12. Only create ONE item per distinct cost type. If "groceries" is mentioned, create one groceries item. If "eating out" is mentioned, create one eating out item. Do NOT also create a general "food" or "daily expenses" item.
-13. PER-PERSON COSTS: For activities, tours, and tickets that are priced per person, multiply by {num_travelers}:
-    - If a tour is "$50/person" and there are {num_travelers} travelers, quantity should be {num_travelers}, unit should be "person"
-    - Food costs are typically shared/personal so don't multiply
-    - Accommodation is often shared so check context (a "double room" covers 2 people)
-14. TEXT_TO_MATCH RULES:
-    - Pick a UNIQUE phrase that appears only once in the text
-    - Include enough context to be unambiguous (e.g., "Explorer Plan: Approximately $356" not just "$356")
-    - For price ranges like "$25 to $70", use the full range text OR the item name, NOT just the first price
-    - The button will appear right after this text, so pick a natural endpoint
+1. ONLY extract costs with SPECIFIC NAMED items - the name should be something you could Google
+2. Skip general budget advice, ranges, or category estimates
+3. The "name" field should be a proper noun or specific product/service name
+4. Convert local currencies to USD
+5. Parse quantities: "5 nights x $30" → amount: 30, quantity: 5
+6. For per-person costs, set quantity to {num_travelers}
+7. text_to_match must be unique - include the item name AND price for uniqueness
 
 TEXT TO ANALYZE:
 {text}
 
-Respond with ONLY valid JSON in this exact format:
+Respond with ONLY valid JSON:
 {{
   "costs": [
-    {{"category": "accommodation", "name": "Private Hostel in Quito", "amount": 30, "quantity": 5, "unit": "night", "notes": "mid-range private room", "text_to_match": "Private room: $30/night"}},
-    {{"category": "accommodation", "name": "Apartment in Cotopaxi", "amount": 300, "quantity": 3, "unit": "month", "notes": "pre-booked long-term rental", "text_to_match": "Apartment: $300/month"}},
-    {{"category": "food", "name": "Groceries", "amount": 10, "quantity": 90, "unit": "day", "notes": "cooking at home", "text_to_match": "groceries ($10/day)"}},
-    {{"category": "activities", "name": "Amazon Tour", "amount": 150, "quantity": {num_travelers}, "unit": "person", "notes": "3-day tour, price per person", "text_to_match": "Amazon Tour: $150 per person"}}
+    {{"category": "accommodation", "name": "Secret Garden Hostel", "amount": 15, "quantity": 3, "unit": "night", "notes": "eco-hostel near Cotopaxi", "text_to_match": "Secret Garden Hostel: $15/night"}},
+    {{"category": "activities", "name": "Quilotoa Loop Trek", "amount": 25, "quantity": {num_travelers}, "unit": "person", "notes": "includes guide", "text_to_match": "Quilotoa Loop Trek: $25 per person"}}
   ],
   "tourist_traps": [
-    {{"name": "Taxi overcharging", "description": "Always negotiate or use apps", "location": "Airport"}}
+    {{"name": "Taxi overcharging", "description": "Always negotiate or use apps", "location": "Quito Airport"}}
   ]
 }}
 
-If nothing found, respond with: {{"costs": [], "tourist_traps": []}}
+If no SPECIFIC named costs found, respond with: {{"costs": [], "tourist_traps": []}}
 """
 
 
@@ -1497,7 +1491,8 @@ async def extract_costs(request: ExtractCostsRequest):
                     amount=float(c.get("amount", 0)),
                     quantity=float(c.get("quantity", 1)),
                     unit=unit,
-                    notes=c.get("notes", "")
+                    notes=c.get("notes", ""),
+                    text_to_match=c.get("text_to_match", "")
                 ))
 
         tourist_traps = []

@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useContext, useState, useEffect, ReactNode, useRef } from 'react';
+import { createContext, useContext, useState, useEffect, ReactNode, useRef, useCallback } from 'react';
 import { useSession } from 'next-auth/react';
 
 // ============================================
@@ -123,6 +123,7 @@ interface ProfileContextType {
   updateProfile: (updates: Partial<UserProfile>) => void;
   clearProfile: () => void;
   isProfileSet: boolean;
+  isSyncing: boolean;
 }
 
 const ProfileContext = createContext<ProfileContextType | undefined>(undefined);
@@ -135,35 +136,170 @@ function getStorageKey(userId: string | null | undefined): string {
   return `${STORAGE_KEY_PREFIX}-${userId}`;
 }
 
+// Convert database profile to local profile format
+function dbToLocalProfile(dbProfile: Record<string, unknown>): Partial<UserProfile> {
+  return {
+    countryOfOrigin: (dbProfile.countryOfOrigin as string) || '',
+    passportCountry: (dbProfile.passportCountry as string) || '',
+    travelStyle: (dbProfile.travelStyle as UserProfile['travelStyle']) || 'solo',
+    riskTolerance: (dbProfile.riskTolerance as RiskTolerance) || 'medium',
+    comfortThreshold: ((dbProfile.comfortThreshold as string[])?.[0] as ComfortThreshold) || 'hostels',
+    hygieneThreshold: (dbProfile.hygieneThreshold as HygieneThreshold) || 'every_3_days',
+    travelPace: (dbProfile.travelPace as TravelPace) || 'moderate',
+    activityWeighting: {
+      party: (dbProfile.partyWeight as number) ?? 20,
+      nature: (dbProfile.natureWeight as number) ?? 30,
+      culture: (dbProfile.cultureWeight as number) ?? 25,
+      adventure: (dbProfile.adventureWeight as number) ?? 15,
+      relaxation: (dbProfile.relaxationWeight as number) ?? 10,
+    },
+    foodPreference: (dbProfile.foodPreference as FoodPreference) || 'street_food',
+    packWeight: (dbProfile.packWeight as PackWeight) || 'moderate',
+    electronicsTolerance: (dbProfile.electronicsTolerance as ElectronicsTolerance) || 'medium',
+    budgetPreference: (dbProfile.budgetStyle as UserProfile['budgetPreference']) || 'broke-backpacker',
+    incomeType: (dbProfile.incomeType as IncomeType) || 'savings_only',
+    monthlyBudget: (dbProfile.monthlyBudget as number) ?? 1500,
+    walkAtNight: (dbProfile.nightWalking as boolean) ?? true,
+    experiencedMotos: (dbProfile.motorbikeOk as boolean) ?? false,
+    openToCouchsurfing: (dbProfile.couchsurfingOk as boolean) ?? false,
+    femaleTravelerConcerns: (dbProfile.femaleSafety as boolean) ?? false,
+    instagramFriendly: (dbProfile.instagramSpots as boolean) ?? false,
+    hiddenSpots: (dbProfile.hiddenGems as boolean) ?? true,
+    videoFocus: (dbProfile.videoLocations as boolean) ?? false,
+    sunriseSunsetOptimization: (dbProfile.sunriseSunsetOptimization as boolean) ?? false,
+    countriesVisited: (dbProfile.countriesVisited as string[]) || [],
+    bucketList: (dbProfile.bucketList as string[]) || [],
+    interests: (dbProfile.interests as string[]) || [],
+    restrictions: (dbProfile.restrictions as string[]) || [],
+  };
+}
+
+// Convert local profile to database format
+function localToDbProfile(profile: UserProfile): Record<string, unknown> {
+  return {
+    countryOfOrigin: profile.countryOfOrigin || null,
+    passportCountry: profile.passportCountry || null,
+    travelStyle: profile.travelStyle || null,
+    riskTolerance: profile.riskTolerance || null,
+    comfortThreshold: profile.comfortThreshold ? [profile.comfortThreshold] : [],
+    hygieneThreshold: profile.hygieneThreshold || null,
+    travelPace: profile.travelPace || null,
+    partyWeight: profile.activityWeighting?.party ?? 50,
+    natureWeight: profile.activityWeighting?.nature ?? 50,
+    cultureWeight: profile.activityWeighting?.culture ?? 50,
+    adventureWeight: profile.activityWeighting?.adventure ?? 50,
+    relaxationWeight: profile.activityWeighting?.relaxation ?? 50,
+    foodPreference: profile.foodPreference || null,
+    packWeight: profile.packWeight || null,
+    electronicsTolerance: profile.electronicsTolerance || null,
+    budgetStyle: profile.budgetPreference || null,
+    incomeType: profile.incomeType || null,
+    monthlyBudget: profile.monthlyBudget ?? null,
+    nightWalking: profile.walkAtNight ?? false,
+    motorbikeOk: profile.experiencedMotos ?? false,
+    couchsurfingOk: profile.openToCouchsurfing ?? false,
+    femaleSafety: profile.femaleTravelerConcerns ?? false,
+    instagramSpots: profile.instagramFriendly ?? false,
+    hiddenGems: profile.hiddenSpots ?? true,
+    videoLocations: profile.videoFocus ?? false,
+    sunriseSunsetOptimization: profile.sunriseSunsetOptimization ?? false,
+    countriesVisited: profile.countriesVisited || [],
+    bucketList: profile.bucketList || [],
+    interests: profile.interests || [],
+    restrictions: profile.restrictions || [],
+  };
+}
+
 export function ProfileProvider({ children }: { children: ReactNode }) {
   const { data: session, status } = useSession();
   const userId = session?.user?.id;
   const prevUserIdRef = useRef<string | null | undefined>(undefined);
   const [profile, setProfile] = useState<UserProfile>(defaultProfile);
   const [isLoaded, setIsLoaded] = useState(false);
+  const [isSyncing, setIsSyncing] = useState(false);
+  const syncTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Sync profile to database (debounced)
+  const syncToDatabase = useCallback(async (profileData: UserProfile) => {
+    if (!userId) return;
+
+    try {
+      setIsSyncing(true);
+      await fetch('/api/profile', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(localToDbProfile(profileData)),
+      });
+    } catch (error) {
+      console.error('Failed to sync profile to database:', error);
+    } finally {
+      setIsSyncing(false);
+    }
+  }, [userId]);
+
+  // Load profile from database
+  const loadFromDatabase = useCallback(async (): Promise<Partial<UserProfile> | null> => {
+    if (!userId) return null;
+
+    try {
+      const response = await fetch('/api/profile');
+      if (response.ok) {
+        const data = await response.json();
+        if (data && Object.keys(data).length > 0) {
+          return dbToLocalProfile(data);
+        }
+      }
+    } catch (error) {
+      console.error('Failed to load profile from database:', error);
+    }
+    return null;
+  }, [userId]);
 
   // Load profile from localStorage for the current user
-  const loadProfileForUser = (uid: string | null | undefined) => {
+  const loadProfileForUser = useCallback(async (uid: string | null | undefined) => {
     const storageKey = getStorageKey(uid);
     const stored = localStorage.getItem(storageKey);
+    let localProfile: UserProfile | null = null;
+
     if (stored) {
       try {
         const parsed = JSON.parse(stored);
-        // Merge with defaults to handle new fields added to profile
-        setProfile({
+        localProfile = {
           ...defaultProfile,
           ...parsed,
-          // Ensure nested objects are properly merged
           activityWeighting: { ...defaultActivityWeighting, ...(parsed.activityWeighting || {}) }
-        });
-        return;
+        };
       } catch (e) {
         console.error('Failed to parse stored profile:', e);
       }
     }
-    // No stored profile or parse error - use defaults
-    setProfile(defaultProfile);
-  };
+
+    // If user is authenticated, try to load from database
+    if (uid) {
+      const dbProfile = await loadFromDatabase();
+      if (dbProfile && Object.keys(dbProfile).length > 0) {
+        // Database profile exists - use it as source of truth
+        const mergedProfile = {
+          ...defaultProfile,
+          ...dbProfile,
+          // Preserve name from local if DB doesn't have it (name is on User model, not Profile)
+          name: localProfile?.name || dbProfile.name || defaultProfile.name,
+        };
+        setProfile(mergedProfile);
+        // Also update localStorage
+        localStorage.setItem(storageKey, JSON.stringify(mergedProfile));
+        return;
+      } else if (localProfile && localProfile.name) {
+        // No DB profile but local profile exists - migrate to database
+        await syncToDatabase(localProfile);
+        setProfile(localProfile);
+        return;
+      }
+    }
+
+    // Use local profile or defaults
+    setProfile(localProfile || defaultProfile);
+  }, [loadFromDatabase, syncToDatabase]);
 
   // Load from localStorage on mount and when user changes
   useEffect(() => {
@@ -175,18 +311,33 @@ export function ProfileProvider({ children }: { children: ReactNode }) {
     prevUserIdRef.current = userId;
 
     if (userChanged || !isLoaded) {
-      loadProfileForUser(userId);
-      setIsLoaded(true);
+      loadProfileForUser(userId).then(() => setIsLoaded(true));
     }
-  }, [userId, status]);
+  }, [userId, status, isLoaded, loadProfileForUser]);
 
-  // Save to localStorage on change
+  // Save to localStorage on change and debounced sync to database
   useEffect(() => {
     if (isLoaded && status !== 'loading') {
       const storageKey = getStorageKey(userId);
       localStorage.setItem(storageKey, JSON.stringify(profile));
+
+      // Debounced sync to database
+      if (userId) {
+        if (syncTimeoutRef.current) {
+          clearTimeout(syncTimeoutRef.current);
+        }
+        syncTimeoutRef.current = setTimeout(() => {
+          syncToDatabase(profile);
+        }, 1000); // 1 second debounce
+      }
     }
-  }, [profile, isLoaded, userId, status]);
+
+    return () => {
+      if (syncTimeoutRef.current) {
+        clearTimeout(syncTimeoutRef.current);
+      }
+    };
+  }, [profile, isLoaded, userId, status, syncToDatabase]);
 
   const updateProfile = (updates: Partial<UserProfile>) => {
     setProfile(prev => ({ ...prev, ...updates }));
@@ -196,12 +347,18 @@ export function ProfileProvider({ children }: { children: ReactNode }) {
     setProfile(defaultProfile);
     const storageKey = getStorageKey(userId);
     localStorage.removeItem(storageKey);
+    // Also clear from database
+    if (userId) {
+      fetch('/api/profile', {
+        method: 'DELETE',
+      }).catch(err => console.error('Failed to delete profile from database:', err));
+    }
   };
 
   const isProfileSet = profile.name.trim().length > 0;
 
   return (
-    <ProfileContext.Provider value={{ profile, updateProfile, clearProfile, isProfileSet }}>
+    <ProfileContext.Provider value={{ profile, updateProfile, clearProfile, isProfileSet, isSyncing }}>
       {children}
     </ProfileContext.Provider>
   );

@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useContext, useState, useEffect, ReactNode, useRef } from 'react';
+import { createContext, useContext, useState, useEffect, ReactNode, useRef, useCallback } from 'react';
 import { useSession } from 'next-auth/react';
 
 // ============================================
@@ -311,6 +311,9 @@ export interface Chat {
   createdAt: number;
   updatedAt: number;
 
+  // Database reference
+  tripId?: string; // Link to Trip in database
+
   // Trip Context
   tripContext: TripContext;
   tripSetupComplete: boolean;
@@ -389,6 +392,8 @@ interface ChatsContextType {
   updateConversationVariables: (chatId: string, variables: Partial<ConversationVariables>) => void;
   mergeConversationVariables: (chatId: string, newVars: Partial<ConversationVariables>) => void;
   clearConversationVariables: (chatId: string) => void;
+  // Database sync status
+  isSyncing: boolean;
 }
 
 const ChatsContext = createContext<ChatsContextType | undefined>(undefined);
@@ -464,10 +469,148 @@ export function ChatsProvider({ children }: { children: ReactNode }) {
   const [chats, setChats] = useState<Chat[]>([]);
   const [activeChatId, setActiveChatId] = useState<string | null>(null);
   const [isLoaded, setIsLoaded] = useState(false);
+  const [isSyncing, setIsSyncing] = useState(false);
+  const syncTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const lastSyncedRef = useRef<string>('');
+
+  // Load chats from database
+  const loadFromDatabase = useCallback(async (): Promise<Chat[] | null> => {
+    if (!userId) return null;
+
+    try {
+      const response = await fetch('/api/chats');
+      if (response.ok) {
+        const data = await response.json();
+        if (Array.isArray(data) && data.length > 0) {
+          // Transform DB format to local Chat format
+          return data.map((chat: Record<string, unknown>) => ({
+            id: chat.id as string,
+            title: chat.title as string || 'New Trip',
+            destination: chat.destination as string || '',
+            budget: chat.budget as string || 'Backpacker',
+            messages: (chat.messages as Message[]) || [],
+            createdAt: new Date(chat.createdAt as string).getTime(),
+            updatedAt: new Date(chat.updatedAt as string).getTime(),
+            tripSetupComplete: chat.tripSetupComplete as boolean || false,
+            tripContext: (chat.tripContext as TripContext) || { ...defaultTripContext },
+            mapPins: (chat.mapPins as MapPin[]) || [],
+            mapCenter: chat.mapCenter as [number, number] | undefined,
+            mapZoom: chat.mapZoom as number | undefined,
+            extractedLocations: (chat.extractedLocations as MessageLocations) || {},
+            extractedCosts: (chat.extractedCosts as MessageCosts) || {},
+            tripCosts: (chat.tripCosts as TripCosts) || { ...defaultTripCosts },
+            touristTraps: (chat.touristTraps as TouristTrap[]) || [],
+            bucketList: (chat.bucketList as BucketListItem[]) || [],
+            packingList: (chat.packingList as PackingList) || { ...defaultPackingList },
+            eventsData: (chat.eventsData as EventsData) || { ...defaultEventsData },
+            conversationVariables: (chat.conversationVariables as ConversationVariables) || { ...defaultConversationVariables },
+            tripId: chat.tripId as string,
+          }));
+        }
+      }
+    } catch (error) {
+      console.error('Failed to load chats from database:', error);
+    }
+    return null;
+  }, [userId]);
+
+  // Sync a single chat to database (debounced)
+  const syncChatToDatabase = useCallback(async (chat: Chat) => {
+    if (!userId || !chat.tripId) return;
+
+    try {
+      // Update chat
+      await fetch(`/api/chats/${chat.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: chat.title,
+          destination: chat.destination,
+          budget: chat.budget,
+          tripSetupComplete: chat.tripSetupComplete,
+          messages: chat.messages,
+          extractedLocations: chat.extractedLocations,
+          extractedCosts: chat.extractedCosts,
+        }),
+      });
+
+      // Update trip data
+      await fetch(`/api/trips/${chat.tripId}/sync`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          destination: chat.destination,
+          duration: chat.tripContext.tripDurationDays,
+          startDate: chat.tripContext.startDate,
+          dailyBudget: chat.tripContext.dailyBudgetTarget,
+          preferredLanguage: chat.tripContext.preferredLanguage,
+          tripSetupComplete: chat.tripSetupComplete,
+          transportStyles: chat.tripContext.transportationStyles,
+          accommodationStyles: chat.tripContext.accommodationStyles,
+          dealBreakers: chat.tripContext.dealBreakers,
+          goals: chat.tripContext.tripGoals,
+          customGoals: chat.tripContext.customGoals,
+          overrideNightWalking: chat.tripContext.walkAtNightOverride,
+          overrideMotorbikes: chat.tripContext.experiencedMotosOverride,
+          overrideCouchsurfing: chat.tripContext.openToCouchsurfingOverride,
+          overrideInstagram: chat.tripContext.instagramFriendlyOverride,
+          overrideHiddenGems: chat.tripContext.hiddenSpotsOverride,
+          needsVisa: chat.tripContext.needsVisa,
+          visaOnArrival: chat.tripContext.visaOnArrival,
+          visaNotes: chat.tripContext.visaNotes,
+          mapCenter: chat.mapCenter,
+          mapZoom: chat.mapZoom,
+          itineraryStops: chat.tripContext.itineraryBreakdown,
+          costItems: chat.tripCosts.items,
+          mapPins: chat.mapPins,
+          bucketListItems: chat.bucketList,
+          packingItems: chat.packingList.items,
+          touristTraps: chat.touristTraps,
+          tripEvents: chat.eventsData.events,
+          eventsLastFetched: chat.eventsData.lastFetched,
+          eventsTravelAdvisory: chat.eventsData.travelAdvisory,
+          conversationVars: chat.conversationVariables,
+        }),
+      });
+    } catch (error) {
+      console.error('Failed to sync chat to database:', error);
+    }
+  }, [userId]);
+
+  // Debounced sync - syncs all chats
+  const syncAllToDatabase = useCallback(async (allChats: Chat[]) => {
+    if (!userId) return;
+
+    setIsSyncing(true);
+    try {
+      // Only sync chats that have tripId (have been saved to DB)
+      for (const chat of allChats) {
+        if (chat.tripId) {
+          await syncChatToDatabase(chat);
+        }
+      }
+    } finally {
+      setIsSyncing(false);
+    }
+  }, [userId, syncChatToDatabase]);
 
   // Load chats from localStorage for the current user
-  const loadChatsForUser = (uid: string | null | undefined) => {
+  const loadChatsForUser = useCallback(async (uid: string | null | undefined) => {
     const storageKey = getStorageKey(uid);
+
+    // If user is authenticated, try to load from database first
+    if (uid) {
+      const dbChats = await loadFromDatabase();
+      if (dbChats && dbChats.length > 0) {
+        setChats(dbChats);
+        setActiveChatId(dbChats[0].id);
+        // Also update localStorage
+        localStorage.setItem(storageKey, JSON.stringify({ chats: dbChats, activeChatId: dbChats[0].id }));
+        return;
+      }
+    }
+
+    // Fall back to localStorage
     const stored = localStorage.getItem(storageKey);
     if (stored) {
       try {
@@ -506,9 +649,9 @@ export function ChatsProvider({ children }: { children: ReactNode }) {
     const initial = createNewChat();
     setChats([initial]);
     setActiveChatId(initial.id);
-  };
+  }, [loadFromDatabase]);
 
-  // Load from localStorage on mount and when user changes
+  // Load from localStorage/database on mount and when user changes
   useEffect(() => {
     // Wait for session to be determined (not loading)
     if (status === 'loading') return;
@@ -521,15 +664,36 @@ export function ChatsProvider({ children }: { children: ReactNode }) {
       loadChatsForUser(userId);
       setIsLoaded(true);
     }
-  }, [userId, status]);
+  }, [userId, status, isLoaded, loadChatsForUser]);
 
-  // Save to localStorage on change
+  // Save to localStorage on change and debounced sync to database
   useEffect(() => {
     if (isLoaded && status !== 'loading') {
       const storageKey = getStorageKey(userId);
       localStorage.setItem(storageKey, JSON.stringify({ chats, activeChatId }));
+
+      // Debounced sync to database for authenticated users
+      if (userId) {
+        const chatsJson = JSON.stringify(chats);
+        // Only sync if data actually changed
+        if (chatsJson !== lastSyncedRef.current) {
+          if (syncTimeoutRef.current) {
+            clearTimeout(syncTimeoutRef.current);
+          }
+          syncTimeoutRef.current = setTimeout(() => {
+            lastSyncedRef.current = chatsJson;
+            syncAllToDatabase(chats);
+          }, 2000); // 2 second debounce
+        }
+      }
     }
-  }, [chats, activeChatId, isLoaded, userId, status]);
+
+    return () => {
+      if (syncTimeoutRef.current) {
+        clearTimeout(syncTimeoutRef.current);
+      }
+    };
+  }, [chats, activeChatId, isLoaded, userId, status, syncAllToDatabase]);
 
   // Derive activeChat, with auto-recovery if activeChatId is stale
   const activeChat = chats.find(c => c.id === activeChatId) || null;
@@ -1179,6 +1343,7 @@ export function ChatsProvider({ children }: { children: ReactNode }) {
       updateConversationVariables,
       mergeConversationVariables,
       clearConversationVariables,
+      isSyncing,
     }}>
       {children}
     </ChatsContext.Provider>

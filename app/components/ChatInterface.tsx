@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect, useCallback } from 'react';
-import { Send, MapPin, DollarSign, User, Settings, Compass, Calendar, Target, Map as MapIcon, Plus, Check, Loader2, MessageSquare, ChevronLeft, ChevronRight, Calculator, ListChecks, Backpack, CalendarDays, Mountain, Sailboat, Tent, Footprints, X } from 'lucide-react';
+import { Send, MapPin, DollarSign, User, Settings, Compass, Calendar, Target, Map as MapIcon, Plus, Check, Loader2, MessageSquare, ChevronLeft, ChevronRight, Calculator, ListChecks, Backpack, CalendarDays, Mountain, Sailboat, Tent, Footprints, X, Menu, ArrowLeft } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import clsx from 'clsx';
 import { useChats, MapPinType, ExtractedLocation, MessageLocations, ExtractedCost, MessageCosts, CostCategory } from '../context/ChatsContext';
@@ -100,6 +100,10 @@ export default function ChatInterface() {
     const [isMapExpanded, setIsMapExpanded] = useState(true);
     const [rightPanelTab, setRightPanelTab] = useState<'map' | 'costs' | 'bucket' | 'packing' | 'events'>('map');
     const [showTripContext, setShowTripContext] = useState(false);
+
+    // Mobile-specific state
+    const [mobilePanel, setMobilePanel] = useState<'chat' | 'map' | 'costs' | 'bucket' | 'packing' | 'events' | null>(null);
+    const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
     const [addingLocation, setAddingLocation] = useState<string | null>(null);
     const [addedLocations, setAddedLocations] = useState<Set<string>>(new Set());
 
@@ -791,24 +795,82 @@ export default function ChatInterface() {
     const hasItinerary = tripCtx.itineraryBreakdown && tripCtx.itineraryBreakdown.length > 0;
     const hasGoals = tripCtx.tripGoals && tripCtx.tripGoals.length > 0;
 
+    // Helper function to open a mobile panel
+    const openMobilePanel = (panel: 'map' | 'costs' | 'bucket' | 'packing' | 'events') => {
+        setMobilePanel(panel);
+        setRightPanelTab(panel); // Keep in sync for when switching back to desktop
+    };
+
+    // Close mobile panel and return to chat
+    const closeMobilePanel = () => {
+        setMobilePanel(null);
+    };
+
     return (
         <>
-            <div className="flex w-full h-[90vh] bg-stone-800 rounded-2xl overflow-hidden shadow-2xl border border-stone-700">
-                {/* Left Sidebar - Trips List */}
+            <div className="flex w-full h-[90vh] bg-stone-800 rounded-2xl overflow-hidden shadow-2xl border border-stone-700 relative">
+                {/* Left Sidebar - Trips List (hidden on mobile, shown on md+) */}
                 <ChatSidebar />
+
+                {/* Mobile Sidebar Overlay */}
+                <AnimatePresence>
+                    {isMobileSidebarOpen && (
+                        <>
+                            {/* Backdrop */}
+                            <motion.div
+                                initial={{ opacity: 0 }}
+                                animate={{ opacity: 1 }}
+                                exit={{ opacity: 0 }}
+                                className="fixed inset-0 bg-black/60 z-40 md:hidden"
+                                onClick={() => setIsMobileSidebarOpen(false)}
+                            />
+                            {/* Sidebar Drawer */}
+                            <motion.div
+                                initial={{ x: '-100%' }}
+                                animate={{ x: 0 }}
+                                exit={{ x: '-100%' }}
+                                transition={{ type: 'spring', damping: 25, stiffness: 300 }}
+                                className="fixed left-0 top-0 bottom-0 w-72 bg-stone-900 z-50 md:hidden shadow-2xl"
+                            >
+                                <div className="flex items-center justify-between p-4 border-b border-stone-700">
+                                    <span className="font-semibold text-orange-400">Your Trips</span>
+                                    <button
+                                        onClick={() => setIsMobileSidebarOpen(false)}
+                                        className="p-2 hover:bg-stone-800 rounded-lg transition-colors"
+                                    >
+                                        <X size={20} />
+                                    </button>
+                                </div>
+                                <ChatSidebar isMobileDrawer onSelectChat={() => setIsMobileSidebarOpen(false)} />
+                            </motion.div>
+                        </>
+                    )}
+                </AnimatePresence>
 
                 {/* Main Content Area - Chat + Map Split */}
                 <div className="flex-1 flex">
-                    {/* Chat Section */}
+                    {/* Chat Section - Full width on mobile, half on desktop when panel expanded */}
                     <div className={clsx(
                         "flex flex-col bg-stone-800 transition-all duration-300",
-                        isMapExpanded ? "w-1/2" : "flex-1"
+                        // On mobile: always full width (panel shows as overlay)
+                        // On md+: half width when panel expanded, full width when collapsed
+                        "w-full md:w-auto",
+                        isMapExpanded ? "md:w-1/2" : "md:flex-1"
                     )}>
                         {/* Chat Header */}
                         <div className="flex items-center justify-between px-4 py-2 border-b border-stone-700 bg-stone-900">
                             <div className="flex items-center gap-2">
+                                {/* Mobile menu button */}
+                                <button
+                                    onClick={() => setIsMobileSidebarOpen(true)}
+                                    className="p-1.5 hover:bg-stone-700 rounded transition-colors md:hidden"
+                                    title="Open trips menu"
+                                >
+                                    <Menu size={18} />
+                                </button>
                                 <MessageSquare size={16} className="text-orange-500" />
-                                <span className="text-sm font-medium">Chat with Sierra</span>
+                                <span className="text-sm font-medium hidden sm:inline">Chat with Sierra</span>
+                                <span className="text-sm font-medium sm:hidden">Sierra</span>
                             </div>
                             <div className="flex items-center gap-2">
                                 <button
@@ -954,8 +1016,8 @@ export default function ChatInterface() {
                             <div ref={messagesEndRef} />
                         </div>
 
-                        {/* Input Area */}
-                        <div className="p-3 bg-stone-900 border-t border-stone-700">
+                        {/* Input Area - extra padding at bottom for mobile nav bar */}
+                        <div className="p-3 pb-16 md:pb-3 bg-stone-900 border-t border-stone-700">
                             {activeChat?.tripSetupComplete ? (
                                 <div className="flex gap-2">
                                     <input
@@ -986,9 +1048,9 @@ export default function ChatInterface() {
                         </div>
                     </div>
 
-                    {/* Right Panel - Map & Costs */}
+                    {/* Right Panel - Map & Costs (DESKTOP ONLY - hidden on mobile) */}
                     {isMapExpanded && (
-                        <div className="w-1/2 flex flex-col border-l border-stone-700 relative">
+                        <div className="hidden md:flex w-1/2 flex-col border-l border-stone-700 relative">
                             {/* Collapse Button */}
                             <button
                                 onClick={() => setIsMapExpanded(false)}
@@ -1103,6 +1165,110 @@ export default function ChatInterface() {
                         </div>
                     )}
                 </div>
+
+                {/* Mobile Bottom Navigation Bar */}
+                <div className="absolute bottom-0 left-0 right-0 md:hidden bg-stone-900 border-t border-stone-700 px-2 py-1.5 flex items-center justify-around z-30">
+                    <button
+                        onClick={() => openMobilePanel('map')}
+                        className={clsx(
+                            "flex flex-col items-center gap-0.5 px-3 py-1.5 rounded-lg transition-colors",
+                            mobilePanel === 'map' ? "text-orange-400 bg-orange-600/20" : "text-stone-400"
+                        )}
+                    >
+                        <MapIcon size={20} />
+                        <span className="text-[10px]">{tMap('title')}</span>
+                        {(activeChat?.mapPins?.length ?? 0) > 0 && (
+                            <span className="absolute -top-0.5 -right-0.5 bg-orange-600 text-white text-[8px] w-4 h-4 flex items-center justify-center rounded-full">
+                                {activeChat?.mapPins?.length}
+                            </span>
+                        )}
+                    </button>
+                    <button
+                        onClick={() => openMobilePanel('bucket')}
+                        className={clsx(
+                            "flex flex-col items-center gap-0.5 px-3 py-1.5 rounded-lg transition-colors relative",
+                            mobilePanel === 'bucket' ? "text-purple-400 bg-purple-600/20" : "text-stone-400"
+                        )}
+                    >
+                        <ListChecks size={20} />
+                        <span className="text-[10px]">{tBucket('title')}</span>
+                    </button>
+                    <button
+                        onClick={() => openMobilePanel('packing')}
+                        className={clsx(
+                            "flex flex-col items-center gap-0.5 px-3 py-1.5 rounded-lg transition-colors relative",
+                            mobilePanel === 'packing' ? "text-blue-400 bg-blue-600/20" : "text-stone-400"
+                        )}
+                    >
+                        <Backpack size={20} />
+                        <span className="text-[10px]">{tPacking('title')}</span>
+                    </button>
+                    <button
+                        onClick={() => openMobilePanel('costs')}
+                        className={clsx(
+                            "flex flex-col items-center gap-0.5 px-3 py-1.5 rounded-lg transition-colors relative",
+                            mobilePanel === 'costs' ? "text-green-400 bg-green-600/20" : "text-stone-400"
+                        )}
+                    >
+                        <Calculator size={20} />
+                        <span className="text-[10px]">{tCosts('title')}</span>
+                    </button>
+                    <button
+                        onClick={() => openMobilePanel('events')}
+                        className={clsx(
+                            "flex flex-col items-center gap-0.5 px-3 py-1.5 rounded-lg transition-colors relative",
+                            mobilePanel === 'events' ? "text-pink-400 bg-pink-600/20" : "text-stone-400"
+                        )}
+                    >
+                        <CalendarDays size={20} />
+                        <span className="text-[10px]">{tEvents('title')}</span>
+                    </button>
+                </div>
+
+                {/* Mobile Full-Screen Panel Overlay */}
+                <AnimatePresence>
+                    {mobilePanel && (
+                        <motion.div
+                            initial={{ y: '100%' }}
+                            animate={{ y: 0 }}
+                            exit={{ y: '100%' }}
+                            transition={{ type: 'spring', damping: 25, stiffness: 300 }}
+                            className="absolute inset-0 bg-stone-800 z-40 md:hidden flex flex-col"
+                        >
+                            {/* Mobile Panel Header */}
+                            <div className="flex items-center justify-between px-4 py-3 border-b border-stone-700 bg-stone-900">
+                                <button
+                                    onClick={closeMobilePanel}
+                                    className="flex items-center gap-2 text-orange-400 hover:text-orange-300 transition-colors"
+                                >
+                                    <ArrowLeft size={20} />
+                                    <span className="text-sm font-medium">Back to Chat</span>
+                                </button>
+                                <span className="text-sm font-semibold capitalize flex items-center gap-2">
+                                    {mobilePanel === 'map' && <><MapIcon size={16} className="text-orange-400" /> {tMap('title')}</>}
+                                    {mobilePanel === 'bucket' && <><ListChecks size={16} className="text-purple-400" /> {tBucket('title')}</>}
+                                    {mobilePanel === 'packing' && <><Backpack size={16} className="text-blue-400" /> {tPacking('title')}</>}
+                                    {mobilePanel === 'costs' && <><Calculator size={16} className="text-green-400" /> {tCosts('title')}</>}
+                                    {mobilePanel === 'events' && <><CalendarDays size={16} className="text-pink-400" /> {tEvents('title')}</>}
+                                </span>
+                            </div>
+
+                            {/* Mobile Panel Content */}
+                            <div className="flex-1 overflow-hidden">
+                                {mobilePanel === 'map' && (
+                                    <MapPanel
+                                        isExpanded={true}
+                                        onToggle={closeMobilePanel}
+                                    />
+                                )}
+                                {mobilePanel === 'bucket' && <BucketListPanel />}
+                                {mobilePanel === 'packing' && <PackingListPanel />}
+                                {mobilePanel === 'costs' && <CostDashboard />}
+                                {mobilePanel === 'events' && <EventsPanel />}
+                            </div>
+                        </motion.div>
+                    )}
+                </AnimatePresence>
             </div>
 
             {/* Profile Panel */}

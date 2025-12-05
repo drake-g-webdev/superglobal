@@ -1,22 +1,11 @@
 import NextAuth, { NextAuthOptions } from 'next-auth';
 import CredentialsProvider from 'next-auth/providers/credentials';
+import { PrismaAdapter } from '@auth/prisma-adapter';
 import bcrypt from 'bcryptjs';
-
-// Simple in-memory user store (in production, use a database)
-// Users are stored in localStorage on the client, but we need server-side storage too
-const users: Map<string, { id: string; email: string; password: string; name: string; profileComplete: boolean }> = new Map();
-
-// Pre-seed admin account (password: admin1008)
-// Hash generated with bcrypt.hashSync('admin1008', 10)
-users.set('drake.g.webdev@gmail.com', {
-  id: 'admin-user-001',
-  email: 'drake.g.webdev@gmail.com',
-  password: '$2b$10$1BpOKd8wCoxbX4SbMRT.JOZG5VE0HfyBEoU.RbS6WMFLeG1DKtnyG', // admin1008
-  name: 'Drake',
-  profileComplete: true,
-});
+import prisma from '@/app/lib/prisma';
 
 export const authOptions: NextAuthOptions = {
+  adapter: PrismaAdapter(prisma) as NextAuthOptions['adapter'],
   providers: [
     CredentialsProvider({
       name: 'credentials',
@@ -35,20 +24,24 @@ export const authOptions: NextAuthOptions = {
 
         if (action === 'signup') {
           // Check if user already exists
-          if (users.has(credentials.email)) {
+          const existingUser = await prisma.user.findUnique({
+            where: { email: credentials.email },
+          });
+
+          if (existingUser) {
             throw new Error('User already exists');
           }
 
           // Create new user
           const hashedPassword = await bcrypt.hash(credentials.password, 10);
-          const newUser = {
-            id: crypto.randomUUID(),
-            email: credentials.email,
-            password: hashedPassword,
-            name: credentials.name || '',
-            profileComplete: false,
-          };
-          users.set(credentials.email, newUser);
+          const newUser = await prisma.user.create({
+            data: {
+              email: credentials.email,
+              password: hashedPassword,
+              name: credentials.name || '',
+              profileComplete: false,
+            },
+          });
 
           return {
             id: newUser.id,
@@ -58,8 +51,11 @@ export const authOptions: NextAuthOptions = {
           };
         } else {
           // Login
-          const user = users.get(credentials.email);
-          if (!user) {
+          const user = await prisma.user.findUnique({
+            where: { email: credentials.email },
+          });
+
+          if (!user || !user.password) {
             throw new Error('Invalid email or password');
           }
 
@@ -87,10 +83,12 @@ export const authOptions: NextAuthOptions = {
       // Handle profile completion update
       if (trigger === 'update' && session?.profileComplete !== undefined) {
         token.profileComplete = session.profileComplete;
-        // Update the stored user
-        const storedUser = users.get(token.email as string);
-        if (storedUser) {
-          storedUser.profileComplete = session.profileComplete;
+        // Update the stored user in database
+        if (token.email) {
+          await prisma.user.update({
+            where: { email: token.email as string },
+            data: { profileComplete: session.profileComplete },
+          });
         }
       }
       return token;

@@ -53,3 +53,5 @@ venv/
 # ChromaDB / Vector store
 api/chroma_db/
 api/vector_store/
+
+/app/generated/prisma

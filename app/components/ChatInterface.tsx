@@ -15,6 +15,7 @@ import CostDashboard from './CostDashboard';
 import BucketListPanel from './BucketListPanel';
 import PackingListPanel from './PackingListPanel';
 import EventsPanel from './EventsPanel';
+import { API_URL } from '../config/api';
 
 // Adventure-themed thinking messages with icons
 const THINKING_MESSAGES = [
@@ -138,7 +139,7 @@ export default function ChatInterface() {
 
         try {
             console.log('[Location Extraction] Calling API for:', destination);
-            const response = await fetch('http://localhost:8000/api/extract-locations', {
+            const response = await fetch(`${API_URL}/api/extract-locations`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -201,7 +202,7 @@ export default function ChatInterface() {
 
         try {
             console.log('[Cost Extraction] Calling API for:', destination, 'with', numTravelers, 'travelers');
-            const response = await fetch('http://localhost:8000/api/extract-costs', {
+            const response = await fetch(`${API_URL}/api/extract-costs`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -259,7 +260,7 @@ export default function ChatInterface() {
         console.log('[ConvVars Extraction] Starting extraction');
 
         try {
-            const response = await fetch('http://localhost:8000/api/extract-conversation-vars', {
+            const response = await fetch(`${API_URL}/api/extract-conversation-vars`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -321,7 +322,7 @@ export default function ChatInterface() {
                 ? `${location.area}, ${activeChat.destination}`
                 : activeChat.destination;
             console.log('[Add to Map] Geocoding:', location.name, 'in context:', geocodeContext, '(area:', location.area, ')');
-            const geocodeResponse = await fetch('http://localhost:8000/api/geocode', {
+            const geocodeResponse = await fetch(`${API_URL}/api/geocode`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -601,7 +602,7 @@ export default function ChatInterface() {
 
         try {
             // Use non-streaming endpoint for cleaner response handling
-            const response = await fetch('http://localhost:8000/api/chat', {
+            const response = await fetch(`${API_URL}/api/chat`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(requestBody),

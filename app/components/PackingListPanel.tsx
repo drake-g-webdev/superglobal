@@ -10,6 +10,7 @@ import clsx from 'clsx';
 import { useChats, PackingItem } from '../context/ChatsContext';
 import { useProfile } from '../context/ProfileContext';
 import { useTranslations } from '../context/LocaleContext';
+import { API_URL } from '../config/api';
 
 type PackingCategory = PackingItem['category'];
 
@@ -70,7 +71,7 @@ export default function PackingListPanel() {
     setError(null);
 
     try {
-      const response = await fetch('http://localhost:8000/api/generate-packing-list', {
+      const response = await fetch(`${API_URL}/api/generate-packing-list`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

@@ -10,6 +10,7 @@ import clsx from 'clsx';
 import { useChats, EventType, TripEvent, CostCategory } from '../context/ChatsContext';
 import { useProfile } from '../context/ProfileContext';
 import { useTranslations } from '../context/LocaleContext';
+import { API_URL } from '../config/api';
 
 const EVENT_TYPE_CONFIG: Record<EventType, { label: string; icon: React.ComponentType<{ size?: number; className?: string }>; color: string }> = {
   festival: { label: 'Festival', icon: PartyPopper, color: '#f97316' },
@@ -161,7 +162,7 @@ export default function EventsPanel() {
         }
       }
 
-      const response = await fetch('http://localhost:8000/api/discover-events', {
+      const response = await fetch(`${API_URL}/api/discover-events`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

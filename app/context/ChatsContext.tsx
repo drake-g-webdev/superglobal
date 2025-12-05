@@ -88,6 +88,7 @@ export interface ExtractedCost {
   quantity: number;
   unit: string;
   notes: string;
+  text_to_match?: string;  // AI-provided exact text to place button after
 }
 
 // Maps message index -> extracted costs for that message

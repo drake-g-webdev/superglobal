@@ -451,36 +451,30 @@ export default function ChatInterface() {
             }
         }
 
-        // For each cost, find where the amount appears and mark it for button insertion
+        // For each cost, use the AI-provided text_to_match to place buttons
+        // (same strategy as locations - AI tells us exactly where to put the button)
         for (const cost of costs) {
             const costKey = `${cost.name.toLowerCase()}-${cost.amount}`;
             if (shownCosts.has(costKey)) continue;
 
-            // Try to find the cost amount in the content (e.g., "$15", "15 USD", "$15/night")
-            // Match formats like $15, $15.00, 15 USD, 15 dollars, etc.
-            const amountStr = cost.amount.toString();
-            const pricePatterns = [
-                `\\$${amountStr}(?:\\.\\d{2})?`, // $15 or $15.00
-                `${amountStr}\\s*(?:USD|dollars?|bucks)`, // 15 USD, 15 dollars
-                `\\$${amountStr}[/-]`, // $15/ or $15-
-            ];
-
-            let matched = false;
-            for (const pattern of pricePatterns) {
-                const regex = new RegExp(`(${pattern})`, 'i');
+            // Use AI-provided text_to_match (preferred method)
+            const textToMatch = (cost as { text_to_match?: string }).text_to_match;
+            if (textToMatch && textToMatch.length > 2) {
+                // Escape special regex characters and search for exact match
+                const escapedText = textToMatch.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+                const regex = new RegExp(`(${escapedText})`, 'i');
                 const match = processedContent.match(regex);
                 if (match) {
                     const placeholder = `__COST_BTN_${placeholders.length}__`;
                     processedContent = processedContent.replace(regex, `$1${placeholder}`);
                     placeholders.push({ placeholder, type: 'cost', data: cost });
                     shownCosts.add(costKey);
-                    matched = true;
-                    break;
+                    continue;
                 }
             }
 
-            // If no price pattern matched, try matching the cost name
-            if (!matched && cost.name.length > 3) {
+            // Fallback: Try to match the cost name
+            if (cost.name.length > 3) {
                 const nameRegex = new RegExp(`(${cost.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'i');
                 const match = processedContent.match(nameRegex);
                 if (match) {

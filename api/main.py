@@ -1371,6 +1371,7 @@ class ExtractedCost(BaseModel):
     quantity: float = 1.0
     unit: str = "trip"  # night, day, meal, trip, person
     notes: str = ""
+    text_to_match: str = ""  # Exact text from original to place button after
 
 
 class TouristTrapWarning(BaseModel):
@@ -1401,6 +1402,7 @@ COSTS: Extract any specific price mentions with:
 - quantity: The NUMBER of units mentioned (e.g., "5 nights" = quantity 5, "3 months" = quantity 3)
 - unit: One of: night, day, meal, trip, person, month, week
 - notes: Any relevant context
+- text_to_match: The EXACT text snippet from the original that identifies where this cost is mentioned (this is used to place an "Add to Budget" button). Pick a unique, specific phrase like "Standard Plan: Approximately $241" or "World Nomads Explorer Plan" - NOT just "$241" which might appear multiple times.
 
 TOURIST TRAPS: Extract any warnings about scams, overpriced places, or things to avoid with:
 - name: The name of the trap/scam
@@ -1430,6 +1432,11 @@ CRITICAL RULES:
     - If a tour is "$50/person" and there are {num_travelers} travelers, quantity should be {num_travelers}, unit should be "person"
     - Food costs are typically shared/personal so don't multiply
     - Accommodation is often shared so check context (a "double room" covers 2 people)
+14. TEXT_TO_MATCH RULES:
+    - Pick a UNIQUE phrase that appears only once in the text
+    - Include enough context to be unambiguous (e.g., "Explorer Plan: Approximately $356" not just "$356")
+    - For price ranges like "$25 to $70", use the full range text OR the item name, NOT just the first price
+    - The button will appear right after this text, so pick a natural endpoint
 
 TEXT TO ANALYZE:
 {text}
@@ -1437,10 +1444,10 @@ TEXT TO ANALYZE:
 Respond with ONLY valid JSON in this exact format:
 {{
   "costs": [
-    {{"category": "accommodation", "name": "Private Hostel in Quito", "amount": 30, "quantity": 5, "unit": "night", "notes": "mid-range private room"}},
-    {{"category": "accommodation", "name": "Apartment in Cotopaxi", "amount": 300, "quantity": 3, "unit": "month", "notes": "pre-booked long-term rental"}},
-    {{"category": "food", "name": "Groceries", "amount": 10, "quantity": 90, "unit": "day", "notes": "cooking at home"}},
-    {{"category": "activities", "name": "Amazon Tour", "amount": 150, "quantity": {num_travelers}, "unit": "person", "notes": "3-day tour, price per person"}}
+    {{"category": "accommodation", "name": "Private Hostel in Quito", "amount": 30, "quantity": 5, "unit": "night", "notes": "mid-range private room", "text_to_match": "Private room: $30/night"}},
+    {{"category": "accommodation", "name": "Apartment in Cotopaxi", "amount": 300, "quantity": 3, "unit": "month", "notes": "pre-booked long-term rental", "text_to_match": "Apartment: $300/month"}},
+    {{"category": "food", "name": "Groceries", "amount": 10, "quantity": 90, "unit": "day", "notes": "cooking at home", "text_to_match": "groceries ($10/day)"}},
+    {{"category": "activities", "name": "Amazon Tour", "amount": 150, "quantity": {num_travelers}, "unit": "person", "notes": "3-day tour, price per person", "text_to_match": "Amazon Tour: $150 per person"}}
   ],
   "tourist_traps": [
     {{"name": "Taxi overcharging", "description": "Always negotiate or use apps", "location": "Airport"}}

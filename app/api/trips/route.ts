@@ -29,7 +29,8 @@ export async function GET() {
     return NextResponse.json(trips);
   } catch (error) {
     console.error('Error fetching trips:', error);
-    return NextResponse.json({ error: 'Failed to fetch trips' }, { status: 500 });
+    // Return empty array instead of 500 so client can fall back to localStorage
+    return NextResponse.json([], { status: 200 });
   }
 }
 

@@ -15,10 +15,12 @@ export async function GET() {
       where: { userId: session.user.id },
     });
 
-    return NextResponse.json(profile);
+    // Return empty object if no profile found (not an error)
+    return NextResponse.json(profile || {});
   } catch (error) {
     console.error('Error fetching profile:', error);
-    return NextResponse.json({ error: 'Failed to fetch profile' }, { status: 500 });
+    // Return empty object instead of 500 so client can fall back to localStorage
+    return NextResponse.json({}, { status: 200 });
   }
 }
 

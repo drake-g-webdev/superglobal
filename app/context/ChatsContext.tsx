@@ -607,6 +607,8 @@ export function ChatsProvider({ children }: { children: ReactNode }) {
     if (!userId) return;
 
     setIsSyncing(true);
+    const updatedChats: { oldId: string; newId: string; tripId: string }[] = [];
+
     try {
       for (const chat of allChats) {
         if (chat.tripId) {
@@ -627,17 +629,47 @@ export function ChatsProvider({ children }: { children: ReactNode }) {
 
             if (response.ok) {
               const data = await response.json();
-              // Update local chat with tripId so future syncs work
-              chat.tripId = data.tripId;
-              console.log('[Sync] Created new chat in DB:', chat.id, '-> tripId:', data.tripId);
+              console.log('[Sync] Created new chat in DB:', chat.id, '-> chatId:', data.id, 'tripId:', data.tripId);
 
-              // Now sync the full chat data
-              await syncChatToDatabase(chat);
+              // Track the ID change so we can update React state
+              updatedChats.push({ oldId: chat.id, newId: data.id, tripId: data.tripId });
+
+              // Now sync the full chat data (messages, etc.) using the new DB ID
+              await fetch(`/api/chats/${data.id}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  title: chat.title,
+                  destination: chat.destination,
+                  budget: chat.budget,
+                  tripSetupComplete: chat.tripSetupComplete,
+                  messages: chat.messages,
+                  extractedLocations: chat.extractedLocations,
+                  extractedCosts: chat.extractedCosts,
+                }),
+              });
             }
           } catch (e) {
             console.error('[Sync] Failed to create chat in DB:', e);
           }
         }
+      }
+
+      // Update React state with new IDs
+      if (updatedChats.length > 0) {
+        setChats(prev => prev.map(chat => {
+          const update = updatedChats.find(u => u.oldId === chat.id);
+          if (update) {
+            return { ...chat, id: update.newId, tripId: update.tripId };
+          }
+          return chat;
+        }));
+
+        // Also update activeChatId if it was one of the updated chats
+        setActiveChatId(prev => {
+          const update = updatedChats.find(u => u.oldId === prev);
+          return update ? update.newId : prev;
+        });
       }
     } finally {
       setIsSyncing(false);

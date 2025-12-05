@@ -586,11 +586,14 @@ export default function ChatInterface() {
             remaining = remaining.substring(idx + placeholder.length);
         }
 
-        // Add any remaining text
+        // Add any remaining text (strip any leftover placeholders)
         if (remaining) {
-            elements.push(
-                <span key={`text-${partIndex++}`} dangerouslySetInnerHTML={{ __html: remaining.replace(/\n/g, '<br/>') }} />
-            );
+            const cleanRemaining = remaining.replace(/__LOC_BTN_\d+__|__COST_BTN_\d+__/g, '');
+            if (cleanRemaining) {
+                elements.push(
+                    <span key={`text-${partIndex++}`} dangerouslySetInnerHTML={{ __html: cleanRemaining.replace(/\n/g, '<br/>') }} />
+                );
+            }
         }
 
         // Find costs that weren't matched inline (for fallback display)
@@ -599,9 +602,12 @@ export default function ChatInterface() {
             return !shownCosts.has(costKey);
         });
 
+        // Clean any leftover placeholders from processedContent for fallback rendering
+        const cleanProcessedContent = processedContent.replace(/__LOC_BTN_\d+__|__COST_BTN_\d+__/g, '');
+
         return (
             <>
-                {elements.length > 0 ? elements : <span dangerouslySetInnerHTML={{ __html: processedContent.replace(/\n/g, '<br/>') }} />}
+                {elements.length > 0 ? elements : <span dangerouslySetInnerHTML={{ __html: cleanProcessedContent.replace(/\n/g, '<br/>') }} />}
                 {/* Show unmatched costs as a row at the end */}
                 {unmatchedCosts.length > 0 && (
                     <div className="mt-2 flex flex-wrap gap-2 items-center">

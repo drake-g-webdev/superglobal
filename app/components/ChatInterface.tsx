@@ -434,21 +434,28 @@ export default function ChatInterface() {
         console.log('[Add Itinerary] Adding', extractedItinerary.stops.length, 'stops to trip');
 
         // Also add each stop to the map as a city pin with itinerary metadata
+        // Note: We do NOT filter by name because itineraries can have the same city multiple times
+        // (e.g., starting and ending in the same city)
         const destination = activeChat.destination || 'World';
         let firstCoords: [number, number] | null = null;
         const failedStops: { stop: typeof extractedItinerary.stops[0]; index: number }[] = [];
-        const addedPinNames = new Set(activeChat.mapPins.filter(p => !p.isItineraryStop).map(pin => pin.name.toLowerCase()));
+        // Cache geocoded coordinates by name to avoid redundant API calls for same location
+        const geocodeCache: Record<string, [number, number]> = {};
 
         // First pass: try to geocode all stops
         for (let i = 0; i < extractedItinerary.stops.length; i++) {
             const stop = extractedItinerary.stops[i];
             const nameLower = stop.location.toLowerCase();
-            if (addedPinNames.has(nameLower)) {
-                console.log('[Add Itinerary] Stop already on map:', stop.location);
-                continue;
+
+            // Check cache first - if we've already geocoded this location, reuse coords
+            let coords: [number, number] | null = geocodeCache[nameLower] || null;
+            if (!coords) {
+                coords = await tryGeocode(stop.location, destination);
+                if (coords) {
+                    geocodeCache[nameLower] = coords;
+                }
             }
 
-            const coords = await tryGeocode(stop.location, destination);
             if (coords) {
                 addMapPin(activeChat.id, {
                     name: stop.location,
@@ -461,8 +468,7 @@ export default function ChatInterface() {
                     days: stop.days,
                     notes: stop.notes,
                 });
-                addedPinNames.add(nameLower);
-                console.log('[Add Itinerary] Added to map:', stop.location, coords);
+                console.log('[Add Itinerary] Added to map:', stop.location, 'at order', i, coords);
 
                 if (!firstCoords) {
                     firstCoords = coords;
@@ -546,6 +552,39 @@ export default function ChatInterface() {
     // No auto-extraction effect - we trigger extraction directly after receiving a response
 
     // Function to add a single location to the map
+    // Helper to calculate distance between two coordinates (Haversine formula)
+    const getDistanceKm = (coord1: [number, number], coord2: [number, number]): number => {
+        const R = 6371; // Earth's radius in km
+        const dLat = (coord2[1] - coord1[1]) * Math.PI / 180;
+        const dLon = (coord2[0] - coord1[0]) * Math.PI / 180;
+        const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+            Math.cos(coord1[1] * Math.PI / 180) * Math.cos(coord2[1] * Math.PI / 180) *
+            Math.sin(dLon / 2) * Math.sin(dLon / 2);
+        const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+        return R * c;
+    };
+
+    // Find the nearest itinerary stop to a given coordinate (within 100km threshold)
+    const findNearestItineraryStop = useCallback((coords: [number, number]): string | undefined => {
+        if (!activeChat) return undefined;
+        const itineraryStops = activeChat.mapPins.filter(p => p.isItineraryStop);
+        if (itineraryStops.length === 0) return undefined;
+
+        let nearestStop: typeof itineraryStops[0] | null = null;
+        let minDistance = Infinity;
+        const THRESHOLD_KM = 100; // Max distance to link to a stop
+
+        for (const stop of itineraryStops) {
+            const distance = getDistanceKm(coords, stop.coordinates);
+            if (distance < minDistance && distance < THRESHOLD_KM) {
+                minDistance = distance;
+                nearestStop = stop;
+            }
+        }
+
+        return nearestStop?.id;
+    }, [activeChat]);
+
     const addLocationToMap = useCallback(async (location: ExtractedLocation, messageIndex: number) => {
         console.log('[Add to Map] Clicked for:', location.name, 'type:', location.type);
         if (!activeChat) {
@@ -581,12 +620,18 @@ export default function ChatInterface() {
                 if (geocodeData.success && geocodeData.coordinates) {
                     console.log('[Add to Map] Adding pin to map:', location.name, 'at', geocodeData.coordinates);
                     const coords = geocodeData.coordinates as [number, number];
+
+                    // Find nearest itinerary stop to link this location as a child
+                    const parentStopId = findNearestItineraryStop(coords);
+                    console.log('[Add to Map] Parent stop ID:', parentStopId);
+
                     addMapPin(activeChat.id, {
                         name: location.name,
                         type: location.type,
                         description: location.description,
                         coordinates: coords,
                         sourceMessageIndex: messageIndex,
+                        parentStopId, // Link to nearest itinerary stop
                     });
                     // Center the map on the newly added pin
                     updateMapView(activeChat.id, coords, 14);
@@ -603,7 +648,7 @@ export default function ChatInterface() {
         } finally {
             setAddingLocation(null);
         }
-    }, [activeChat, addMapPin, addedLocations, updateMapView]);
+    }, [activeChat, addMapPin, addedLocations, updateMapView, findNearestItineraryStop]);
 
     const scrollToBottom = () => {
         messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });

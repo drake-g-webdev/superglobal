@@ -362,7 +362,7 @@ export default function MapPanel({ isExpanded, onToggle }: MapPanelProps) {
     };
   }, [routeSegments]);
 
-  // Fetch routes between itinerary stops
+  // Fetch routes between itinerary stops using Mapbox Directions API
   const fetchRoutes = useCallback(async () => {
     if (!activeChat || itineraryStops.length < 2) return;
 
@@ -374,7 +374,7 @@ export default function MapPanel({ isExpanded, onToggle }: MapPanelProps) {
         const from = itineraryStops[i];
         const to = itineraryStops[i + 1];
 
-        const response = await fetch('/api/google/directions', {
+        const response = await fetch('/api/mapbox/directions', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -392,7 +392,7 @@ export default function MapPanel({ isExpanded, onToggle }: MapPanelProps) {
               toPinId: to.id,
               distance: data.route.totalDistance,
               duration: data.route.totalDuration,
-              polyline: data.route.overviewPolyline,
+              polyline: data.route.geometry, // Mapbox uses 'geometry' not 'overviewPolyline'
               mode: routeMode,
             });
           }

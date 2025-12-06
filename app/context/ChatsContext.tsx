@@ -55,6 +55,29 @@ export interface ExtractedLocation {
 // Maps message index -> extracted locations for that message
 export type MessageLocations = Record<number, ExtractedLocation[]>;
 
+// Google Places enriched data
+export interface PlaceDetails {
+  placeId?: string;
+  address?: string;
+  rating?: number;
+  reviewCount?: number;
+  photos?: { reference: string; url: string }[];
+  website?: string;
+  phone?: string;
+  priceLevel?: number;
+  openingHours?: string[];
+}
+
+// Route segment between two stops
+export interface RouteSegment {
+  fromPinId: string;
+  toPinId: string;
+  distance: { text: string; value: number }; // value in meters
+  duration: { text: string; value: number }; // value in seconds
+  polyline: string; // Encoded polyline
+  mode: 'driving' | 'walking' | 'transit' | 'bicycling';
+}
+
 export interface MapPin {
   id: string;
   name: string;
@@ -63,6 +86,14 @@ export interface MapPin {
   coordinates: [number, number]; // [lng, lat]
   sourceMessageIndex: number;
   createdAt: number;
+  // Parent/child hierarchy for itinerary stops
+  parentStopId?: string; // If this is a sub-location (hotel, restaurant), links to primary stop
+  isItineraryStop?: boolean; // True if this is a primary itinerary stop (city/town)
+  itineraryOrder?: number; // Order in the itinerary (0, 1, 2...)
+  days?: number; // Days at this stop (for itinerary stops)
+  notes?: string; // Notes for itinerary stop
+  // Google Places enrichment
+  placeDetails?: PlaceDetails;
 }
 
 // ============================================
@@ -332,6 +363,7 @@ export interface Chat {
   mapPins: MapPin[];
   mapCenter?: [number, number]; // [lng, lat]
   mapZoom?: number;
+  routeSegments?: RouteSegment[]; // Routes between itinerary stops
 
   // Extracted locations from AI responses (persisted for "Add to Map" buttons)
   extractedLocations: MessageLocations;
@@ -407,6 +439,10 @@ interface ChatsContextType {
   updateConversationVariables: (chatId: string, variables: Partial<ConversationVariables>) => void;
   mergeConversationVariables: (chatId: string, newVars: Partial<ConversationVariables>) => void;
   clearConversationVariables: (chatId: string) => void;
+  // Route segments for itinerary
+  setRouteSegments: (chatId: string, segments: RouteSegment[]) => void;
+  // Update individual map pin
+  updateMapPin: (chatId: string, pinId: string, updates: Partial<MapPin>) => void;
   // Database sync status
   isSyncing: boolean;
 }
@@ -466,6 +502,7 @@ function createNewChat(title?: string): Chat {
     mapPins: [],
     mapCenter: undefined,
     mapZoom: undefined,
+    routeSegments: [],
     extractedLocations: {},
     extractedCosts: {},
     extractedItineraries: {},
@@ -1429,6 +1466,34 @@ export function ChatsProvider({ children }: { children: ReactNode }) {
     ));
   };
 
+  // Route segments for itinerary routes
+  const setRouteSegments = (chatId: string, segments: RouteSegment[]) => {
+    setChats(prev => prev.map(chat =>
+      chat.id === chatId
+        ? {
+            ...chat,
+            routeSegments: segments,
+            updatedAt: Date.now(),
+          }
+        : chat
+    ));
+  };
+
+  // Update individual map pin (for adding place details, etc.)
+  const updateMapPin = (chatId: string, pinId: string, updates: Partial<MapPin>) => {
+    setChats(prev => prev.map(chat =>
+      chat.id === chatId
+        ? {
+            ...chat,
+            mapPins: chat.mapPins.map(pin =>
+              pin.id === pinId ? { ...pin, ...updates } : pin
+            ),
+            updatedAt: Date.now(),
+          }
+        : chat
+    ));
+  };
+
   // Don't render children until initial load is complete
   if (!isLoaded) {
     return null;
@@ -1476,6 +1541,8 @@ export function ChatsProvider({ children }: { children: ReactNode }) {
       updateConversationVariables,
       mergeConversationVariables,
       clearConversationVariables,
+      setRouteSegments,
+      updateMapPin,
       isSyncing,
     }}>
       {children}

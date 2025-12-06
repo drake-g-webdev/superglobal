@@ -84,7 +84,7 @@ function ThinkingAnimation() {
 }
 
 export default function ChatInterface() {
-    const { activeChat, updateChat, addMessage, addMapPin, addTouristTrap, updateMapView, mergeConversationVariables, setExtractedLocations, setExtractedCosts, setExtractedItinerary, addCostItem, updateTripContext } = useChats();
+    const { activeChat, updateChat, addMessage, addMapPin, removeMapPin, addTouristTrap, updateMapView, mergeConversationVariables, setExtractedLocations, setExtractedCosts, setExtractedItinerary, addCostItem, updateTripContext } = useChats();
     const { profile, isProfileSet } = useProfile();
     const t = useTranslations('chat');
     const tProfile = useTranslations('profile');
@@ -418,6 +418,12 @@ export default function ChatInterface() {
         const extractedItinerary = activeChat.extractedItineraries?.[messageIndex];
         if (!extractedItinerary || !extractedItinerary.hasItinerary) return;
 
+        // Clear existing itinerary pins first
+        const existingItineraryPins = activeChat.mapPins.filter(p => p.isItineraryStop);
+        for (const pin of existingItineraryPins) {
+            removeMapPin(activeChat.id, pin.id);
+        }
+
         // Update trip context with the new itinerary
         updateTripContext(activeChat.id, {
             itineraryBreakdown: extractedItinerary.stops,
@@ -427,14 +433,15 @@ export default function ChatInterface() {
         setAddedItineraryFromMessage(messageIndex);
         console.log('[Add Itinerary] Adding', extractedItinerary.stops.length, 'stops to trip');
 
-        // Also add each stop to the map as a city pin
+        // Also add each stop to the map as a city pin with itinerary metadata
         const destination = activeChat.destination || 'World';
         let firstCoords: [number, number] | null = null;
-        const failedStops: typeof extractedItinerary.stops = [];
-        const addedPinNames = new Set(activeChat.mapPins.map(pin => pin.name.toLowerCase()));
+        const failedStops: { stop: typeof extractedItinerary.stops[0]; index: number }[] = [];
+        const addedPinNames = new Set(activeChat.mapPins.filter(p => !p.isItineraryStop).map(pin => pin.name.toLowerCase()));
 
         // First pass: try to geocode all stops
-        for (const stop of extractedItinerary.stops) {
+        for (let i = 0; i < extractedItinerary.stops.length; i++) {
+            const stop = extractedItinerary.stops[i];
             const nameLower = stop.location.toLowerCase();
             if (addedPinNames.has(nameLower)) {
                 console.log('[Add Itinerary] Stop already on map:', stop.location);
@@ -449,6 +456,10 @@ export default function ChatInterface() {
                     description: stop.notes || `${stop.days} days`,
                     coordinates: coords,
                     sourceMessageIndex: messageIndex,
+                    isItineraryStop: true,
+                    itineraryOrder: i,
+                    days: stop.days,
+                    notes: stop.notes,
                 });
                 addedPinNames.add(nameLower);
                 console.log('[Add Itinerary] Added to map:', stop.location, coords);
@@ -458,7 +469,7 @@ export default function ChatInterface() {
                 }
             } else {
                 console.warn('[Add Itinerary] First pass failed for:', stop.location);
-                failedStops.push(stop);
+                failedStops.push({ stop, index: i });
             }
         }
 
@@ -466,7 +477,7 @@ export default function ChatInterface() {
         if (failedStops.length > 0) {
             console.log('[Add Itinerary] Retrying', failedStops.length, 'failed stops');
 
-            for (const stop of failedStops) {
+            for (const { stop, index } of failedStops) {
                 // Try with just the first word (often the main city name)
                 const firstWord = stop.location.split(/[\s,\-\/]+/)[0];
                 const words = stop.location.split(/[\s,\-\/]+/);
@@ -499,6 +510,10 @@ export default function ChatInterface() {
                                     description: stop.notes || `${stop.days} days`,
                                     coordinates: coords,
                                     sourceMessageIndex: messageIndex,
+                                    isItineraryStop: true,
+                                    itineraryOrder: index,
+                                    days: stop.days,
+                                    notes: stop.notes,
                                 });
                                 console.log('[Add Itinerary] Retry success for:', stop.location, 'using query:', query);
 
@@ -526,7 +541,7 @@ export default function ChatInterface() {
         }
 
         console.log('[Add Itinerary] Complete. Total stops:', extractedItinerary.stops.length, 'Failed:', failedStops.length);
-    }, [activeChat, updateTripContext, addMapPin, updateMapView, tryGeocode]);
+    }, [activeChat, updateTripContext, addMapPin, removeMapPin, updateMapView, tryGeocode]);
 
     // No auto-extraction effect - we trigger extraction directly after receiving a response
 

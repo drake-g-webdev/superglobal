@@ -1,10 +1,10 @@
 "use client";
 
-import { useState, useCallback, useEffect } from 'react';
-import Map, { Marker, Popup, NavigationControl } from 'react-map-gl';
-import { MapPin, Bed, UtensilsCrossed, Mountain, Landmark, Bus, X, Trash2, Map as MapIcon, List, Building2 } from 'lucide-react';
+import { useState, useCallback, useEffect, useMemo } from 'react';
+import Map, { Marker, Popup, NavigationControl, Source, Layer } from 'react-map-gl';
+import { MapPin, Bed, UtensilsCrossed, Mountain, Landmark, Bus, Trash2, Map as MapIcon, List, Building2, ChevronDown, ChevronRight, Clock, Star, ExternalLink, Route, Loader2, RefreshCw } from 'lucide-react';
 import clsx from 'clsx';
-import { useChats, MapPin as MapPinType, MapPinType as PinType } from '../context/ChatsContext';
+import { useChats, MapPin as MapPinType, MapPinType as PinType, RouteSegment } from '../context/ChatsContext';
 import { useTranslations } from '../context/LocaleContext';
 import 'mapbox-gl/dist/mapbox-gl.css';
 
@@ -54,9 +54,50 @@ const PIN_LABELS: Record<string, string> = {
 // Types shown in the legend (excludes legacy types)
 const LEGEND_TYPES: PinType[] = ['accommodation', 'restaurant', 'activity', 'historic', 'transport', 'city', 'other'];
 
-function PinMarker({ pin, onClick, isSelected }: { pin: MapPinType; onClick: () => void; isSelected: boolean }) {
+// Decode Google's encoded polyline format
+function decodePolyline(encoded: string): [number, number][] {
+  const points: [number, number][] = [];
+  let index = 0;
+  let lat = 0;
+  let lng = 0;
+
+  while (index < encoded.length) {
+    let shift = 0;
+    let result = 0;
+    let byte;
+
+    do {
+      byte = encoded.charCodeAt(index++) - 63;
+      result |= (byte & 0x1f) << shift;
+      shift += 5;
+    } while (byte >= 0x20);
+
+    const dlat = result & 1 ? ~(result >> 1) : result >> 1;
+    lat += dlat;
+
+    shift = 0;
+    result = 0;
+
+    do {
+      byte = encoded.charCodeAt(index++) - 63;
+      result |= (byte & 0x1f) << shift;
+      shift += 5;
+    } while (byte >= 0x20);
+
+    const dlng = result & 1 ? ~(result >> 1) : result >> 1;
+    lng += dlng;
+
+    points.push([lng / 1e5, lat / 1e5]); // [lng, lat] for Mapbox
+  }
+
+  return points;
+}
+
+function PinMarker({ pin, onClick, isSelected, isPrimary }: { pin: MapPinType; onClick: () => void; isSelected: boolean; isPrimary?: boolean }) {
   const Icon = PIN_ICONS[pin.type] || MapPin;
   const color = PIN_COLORS[pin.type] || PIN_COLORS.other;
+  const size = isPrimary ? 'w-10 h-10' : 'w-8 h-8';
+  const iconSize = isPrimary ? 20 : 16;
 
   return (
     <Marker
@@ -74,11 +115,20 @@ function PinMarker({ pin, onClick, isSelected }: { pin: MapPinType; onClick: () 
           isSelected && "scale-125 z-10"
         )}
       >
+        {/* Itinerary order badge for primary stops */}
+        {isPrimary && pin.itineraryOrder !== undefined && (
+          <div className="absolute -top-2 -right-2 w-5 h-5 bg-white text-stone-900 rounded-full flex items-center justify-center text-xs font-bold shadow-lg z-10">
+            {pin.itineraryOrder + 1}
+          </div>
+        )}
         <div
-          className="w-8 h-8 rounded-full flex items-center justify-center shadow-lg border-2 border-white"
+          className={clsx(
+            size,
+            "rounded-full flex items-center justify-center shadow-lg border-2 border-white"
+          )}
           style={{ backgroundColor: color }}
         >
-          <Icon size={16} className="text-white" />
+          <Icon size={iconSize} className="text-white" />
         </div>
         {/* Pin point */}
         <div
@@ -94,8 +144,138 @@ function PinMarker({ pin, onClick, isSelected }: { pin: MapPinType; onClick: () 
   );
 }
 
+// Itinerary stop item in the list
+function ItineraryStopItem({
+  pin,
+  childPins,
+  isExpanded,
+  onToggle,
+  onSelect,
+  isSelected,
+  onRemove,
+  routeToNext,
+}: {
+  pin: MapPinType;
+  childPins: MapPinType[];
+  isExpanded: boolean;
+  onToggle: () => void;
+  onSelect: (pin: MapPinType) => void;
+  isSelected: boolean;
+  onRemove: (pinId: string) => void;
+  routeToNext?: RouteSegment;
+}) {
+  const hasChildren = childPins.length > 0;
+
+  return (
+    <div className="border-b border-stone-800">
+      {/* Primary stop header */}
+      <div
+        className={clsx(
+          "flex items-center gap-2 p-3 cursor-pointer transition-colors",
+          isSelected ? "bg-stone-700" : "hover:bg-stone-800"
+        )}
+        onClick={() => onSelect(pin)}
+      >
+        {/* Expand/collapse button */}
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            if (hasChildren) onToggle();
+          }}
+          className={clsx(
+            "p-0.5 rounded transition-colors",
+            hasChildren ? "hover:bg-stone-600 text-stone-400" : "text-transparent cursor-default"
+          )}
+        >
+          {isExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+        </button>
+
+        {/* Order badge */}
+        <div className="w-6 h-6 rounded-full bg-amber-600 flex items-center justify-center text-xs font-bold flex-shrink-0">
+          {(pin.itineraryOrder ?? 0) + 1}
+        </div>
+
+        {/* Pin icon and info */}
+        <div
+          className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0"
+          style={{ backgroundColor: PIN_COLORS[pin.type] }}
+        >
+          {(() => {
+            const Icon = PIN_ICONS[pin.type];
+            return <Icon size={14} className="text-white" />;
+          })()}
+        </div>
+        <div className="flex-1 min-w-0">
+          <p className="text-sm font-medium truncate">{pin.name}</p>
+          <div className="flex items-center gap-2 text-xs text-stone-400">
+            {pin.days && <span>{pin.days} days</span>}
+            {hasChildren && <span>• {childPins.length} places</span>}
+          </div>
+        </div>
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            onRemove(pin.id);
+          }}
+          className="p-1.5 hover:bg-stone-600 rounded text-stone-500 hover:text-red-400 transition-colors"
+        >
+          <Trash2 size={14} />
+        </button>
+      </div>
+
+      {/* Child pins (expanded) */}
+      {isExpanded && hasChildren && (
+        <div className="bg-stone-850 border-t border-stone-800">
+          {childPins.map((child) => (
+            <div
+              key={child.id}
+              onClick={() => onSelect(child)}
+              className="flex items-center gap-2 pl-12 pr-3 py-2 cursor-pointer transition-colors hover:bg-stone-800"
+            >
+              <div
+                className="w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0"
+                style={{ backgroundColor: PIN_COLORS[child.type] }}
+              >
+                {(() => {
+                  const Icon = PIN_ICONS[child.type];
+                  return <Icon size={12} className="text-white" />;
+                })()}
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-xs font-medium truncate">{child.name}</p>
+                <p className="text-xs text-stone-500">{PIN_LABELS[child.type]}</p>
+              </div>
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onRemove(child.id);
+                }}
+                className="p-1 hover:bg-stone-600 rounded text-stone-500 hover:text-red-400 transition-colors"
+              >
+                <Trash2 size={12} />
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Route info to next stop */}
+      {routeToNext && (
+        <div className="flex items-center gap-2 px-3 py-2 bg-stone-800/50 text-xs text-stone-400 border-t border-stone-800">
+          <Route size={12} className="text-orange-500" />
+          <span>{routeToNext.distance.text}</span>
+          <span>•</span>
+          <Clock size={12} />
+          <span>{routeToNext.duration.text}</span>
+          <span className="text-stone-500">({routeToNext.mode})</span>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function MapPanel({ isExpanded, onToggle }: MapPanelProps) {
-  const { activeChat, removeMapPin, updateMapView } = useChats();
+  const { activeChat, removeMapPin, setRouteSegments } = useChats();
   const t = useTranslations('map');
   const [selectedPin, setSelectedPin] = useState<MapPinType | null>(null);
   const [viewState, setViewState] = useState({
@@ -103,12 +283,14 @@ export default function MapPanel({ isExpanded, onToggle }: MapPanelProps) {
     latitude: 13.7563,
     zoom: 10,
   });
-  const [showList, setShowList] = useState(false);
+  const [showList, setShowList] = useState(true);
+  const [expandedStops, setExpandedStops] = useState<Set<string>>(new Set());
+  const [loadingRoutes, setLoadingRoutes] = useState(false);
+  const [routeMode, setRouteMode] = useState<'driving' | 'walking' | 'transit'>('driving');
 
   const mapboxToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
 
   // Update view state when map center changes (from updateMapView calls)
-  // This is the primary way to center the map on a specific location
   useEffect(() => {
     if (activeChat?.mapCenter) {
       setViewState({
@@ -131,6 +313,133 @@ export default function MapPanel({ isExpanded, onToggle }: MapPanelProps) {
   }, [activeChat, removeMapPin]);
 
   const pins = activeChat?.mapPins || [];
+  const routeSegments = activeChat?.routeSegments || [];
+
+  // Organize pins: itinerary stops (primary) and their children
+  const { itineraryStops, orphanPins, pinsByParent } = useMemo(() => {
+    const stops = pins
+      .filter(p => p.isItineraryStop)
+      .sort((a, b) => (a.itineraryOrder ?? 0) - (b.itineraryOrder ?? 0));
+
+    const byParent: Record<string, MapPinType[]> = {};
+    const orphans: MapPinType[] = [];
+
+    pins.forEach(pin => {
+      if (pin.isItineraryStop) return;
+      if (pin.parentStopId) {
+        if (!byParent[pin.parentStopId]) byParent[pin.parentStopId] = [];
+        byParent[pin.parentStopId].push(pin);
+      } else {
+        orphans.push(pin);
+      }
+    });
+
+    return { itineraryStops: stops, orphanPins: orphans, pinsByParent: byParent };
+  }, [pins]);
+
+  // Generate route GeoJSON from route segments
+  const routeGeoJson = useMemo(() => {
+    if (routeSegments.length === 0) return null;
+
+    const features = routeSegments.map((segment, idx) => {
+      const coordinates = decodePolyline(segment.polyline);
+      return {
+        type: 'Feature' as const,
+        properties: {
+          segmentIndex: idx,
+          mode: segment.mode,
+        },
+        geometry: {
+          type: 'LineString' as const,
+          coordinates,
+        },
+      };
+    });
+
+    return {
+      type: 'FeatureCollection' as const,
+      features,
+    };
+  }, [routeSegments]);
+
+  // Fetch routes between itinerary stops
+  const fetchRoutes = useCallback(async () => {
+    if (!activeChat || itineraryStops.length < 2) return;
+
+    setLoadingRoutes(true);
+    const segments: RouteSegment[] = [];
+
+    try {
+      for (let i = 0; i < itineraryStops.length - 1; i++) {
+        const from = itineraryStops[i];
+        const to = itineraryStops[i + 1];
+
+        const response = await fetch('/api/google/directions', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            origin: from.coordinates,
+            destination: to.coordinates,
+            mode: routeMode,
+          }),
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          if (data.success && data.route) {
+            segments.push({
+              fromPinId: from.id,
+              toPinId: to.id,
+              distance: data.route.totalDistance,
+              duration: data.route.totalDuration,
+              polyline: data.route.overviewPolyline,
+              mode: routeMode,
+            });
+          }
+        }
+      }
+
+      setRouteSegments(activeChat.id, segments);
+    } catch (error) {
+      console.error('Failed to fetch routes:', error);
+    } finally {
+      setLoadingRoutes(false);
+    }
+  }, [activeChat, itineraryStops, routeMode, setRouteSegments]);
+
+  // Auto-fetch routes when itinerary stops change
+  useEffect(() => {
+    if (itineraryStops.length >= 2 && routeSegments.length === 0) {
+      fetchRoutes();
+    }
+  }, [itineraryStops.length]);
+
+  const handleSelectPin = useCallback((pin: MapPinType) => {
+    setSelectedPin(pin);
+    setViewState(prev => ({
+      ...prev,
+      longitude: pin.coordinates[0],
+      latitude: pin.coordinates[1],
+      zoom: 14,
+    }));
+  }, []);
+
+  const toggleStopExpanded = useCallback((stopId: string) => {
+    setExpandedStops(prev => {
+      const next = new Set(prev);
+      if (next.has(stopId)) {
+        next.delete(stopId);
+      } else {
+        next.add(stopId);
+      }
+      return next;
+    });
+  }, []);
+
+  // Get route segment for a given stop (route TO the next stop)
+  const getRouteAfterStop = useCallback((stopId: string) => {
+    return routeSegments.find(s => s.fromPinId === stopId);
+  }, [routeSegments]);
 
   if (!mapboxToken) {
     return (
@@ -147,7 +456,7 @@ export default function MapPanel({ isExpanded, onToggle }: MapPanelProps) {
   return (
     <div className="h-full flex flex-col bg-stone-900 overflow-hidden">
       {/* Header */}
-      <div className="flex items-center justify-start px-3 py-2 border-b border-stone-700 bg-stone-800">
+      <div className="flex items-center justify-between px-3 py-2 border-b border-stone-700 bg-stone-800">
         <button
           onClick={() => setShowList(!showList)}
           className={clsx(
@@ -157,63 +466,107 @@ export default function MapPanel({ isExpanded, onToggle }: MapPanelProps) {
           title="Toggle pin list"
         >
           <List size={14} />
-          {showList ? 'Hide List' : 'Show List'}
+          {showList ? 'Hide Itinerary' : 'Show Itinerary'}
         </button>
+
+        {/* Route controls */}
+        {itineraryStops.length >= 2 && (
+          <div className="flex items-center gap-2">
+            <select
+              value={routeMode}
+              onChange={(e) => setRouteMode(e.target.value as 'driving' | 'walking' | 'transit')}
+              className="bg-stone-700 border border-stone-600 rounded px-2 py-1 text-xs"
+            >
+              <option value="driving">Driving</option>
+              <option value="walking">Walking</option>
+              <option value="transit">Transit</option>
+            </select>
+            <button
+              onClick={fetchRoutes}
+              disabled={loadingRoutes}
+              className="p-1.5 rounded bg-stone-700 hover:bg-stone-600 transition-colors disabled:opacity-50"
+              title="Refresh routes"
+            >
+              {loadingRoutes ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Map with side panel */}
       <div className="flex-1 flex relative">
-        {/* Pin List Panel (slides from left) */}
+        {/* Itinerary Panel (slides from left) */}
         <div className={clsx(
           "absolute left-0 top-0 bottom-0 z-10 bg-stone-900/95 backdrop-blur-sm border-r border-stone-700 transition-all duration-300 overflow-hidden",
-          showList ? "w-64" : "w-0"
+          showList ? "w-72" : "w-0"
         )}>
-          <div className="w-64 h-full flex flex-col">
+          <div className="w-72 h-full flex flex-col">
             <div className="p-3 border-b border-stone-700">
-              <h3 className="text-sm font-medium text-stone-300">Saved Locations</h3>
+              <h3 className="text-sm font-medium text-stone-300">Trip Itinerary</h3>
+              {itineraryStops.length > 0 && (
+                <p className="text-xs text-stone-500 mt-1">
+                  {itineraryStops.length} stops • {itineraryStops.reduce((sum, s) => sum + (s.days || 0), 0)} days
+                </p>
+              )}
             </div>
             <div className="flex-1 overflow-y-auto">
-              {pins.map((pin) => (
-                <div
-                  key={pin.id}
-                  onClick={() => {
-                    setSelectedPin(pin);
-                    setViewState({
-                      ...viewState,
-                      longitude: pin.coordinates[0],
-                      latitude: pin.coordinates[1],
-                      zoom: 14,
-                    });
-                  }}
-                  className={clsx(
-                    "flex items-center gap-3 p-3 cursor-pointer border-b border-stone-800 transition-colors",
-                    selectedPin?.id === pin.id ? "bg-stone-700" : "hover:bg-stone-800"
-                  )}
-                >
-                  <div
-                    className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0"
-                    style={{ backgroundColor: PIN_COLORS[pin.type] }}
-                  >
-                    {(() => {
-                      const Icon = PIN_ICONS[pin.type];
-                      return <Icon size={14} className="text-white" />;
-                    })()}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium truncate">{pin.name}</p>
-                    <p className="text-xs text-stone-500">{PIN_LABELS[pin.type] || pin.type}</p>
-                  </div>
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleRemovePin(pin.id);
-                    }}
-                    className="p-1.5 hover:bg-stone-600 rounded text-stone-500 hover:text-red-400 transition-colors"
-                  >
-                    <Trash2 size={14} />
-                  </button>
-                </div>
+              {/* Itinerary stops with nested children */}
+              {itineraryStops.map((stop) => (
+                <ItineraryStopItem
+                  key={stop.id}
+                  pin={stop}
+                  childPins={pinsByParent[stop.id] || []}
+                  isExpanded={expandedStops.has(stop.id)}
+                  onToggle={() => toggleStopExpanded(stop.id)}
+                  onSelect={handleSelectPin}
+                  isSelected={selectedPin?.id === stop.id}
+                  onRemove={handleRemovePin}
+                  routeToNext={getRouteAfterStop(stop.id)}
+                />
               ))}
+
+              {/* Orphan pins (not linked to any itinerary stop) */}
+              {orphanPins.length > 0 && (
+                <>
+                  <div className="px-3 py-2 bg-stone-800/50 border-y border-stone-700">
+                    <p className="text-xs text-stone-500 font-medium">Other Saved Places</p>
+                  </div>
+                  {orphanPins.map((pin) => (
+                    <div
+                      key={pin.id}
+                      onClick={() => handleSelectPin(pin)}
+                      className={clsx(
+                        "flex items-center gap-3 p-3 cursor-pointer border-b border-stone-800 transition-colors",
+                        selectedPin?.id === pin.id ? "bg-stone-700" : "hover:bg-stone-800"
+                      )}
+                    >
+                      <div
+                        className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0"
+                        style={{ backgroundColor: PIN_COLORS[pin.type] }}
+                      >
+                        {(() => {
+                          const Icon = PIN_ICONS[pin.type];
+                          return <Icon size={14} className="text-white" />;
+                        })()}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium truncate">{pin.name}</p>
+                        <p className="text-xs text-stone-500">{PIN_LABELS[pin.type] || pin.type}</p>
+                      </div>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleRemovePin(pin.id);
+                        }}
+                        className="p-1.5 hover:bg-stone-600 rounded text-stone-500 hover:text-red-400 transition-colors"
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    </div>
+                  ))}
+                </>
+              )}
+
               {pins.length === 0 && (
                 <div className="p-4 text-center text-stone-500 text-sm">
                   {t('noLocations')}
@@ -256,12 +609,49 @@ export default function MapPanel({ isExpanded, onToggle }: MapPanelProps) {
           >
             <NavigationControl position="top-right" />
 
-            {pins.map((pin) => (
+            {/* Route polylines */}
+            {routeGeoJson && (
+              <Source id="route" type="geojson" data={routeGeoJson}>
+                <Layer
+                  id="route-line-border"
+                  type="line"
+                  paint={{
+                    'line-color': '#000000',
+                    'line-width': 6,
+                    'line-opacity': 0.3,
+                  }}
+                />
+                <Layer
+                  id="route-line"
+                  type="line"
+                  paint={{
+                    'line-color': '#f97316',
+                    'line-width': 4,
+                    'line-opacity': 0.8,
+                  }}
+                />
+              </Source>
+            )}
+
+            {/* Render itinerary stop pins (larger) */}
+            {itineraryStops.map((pin) => (
               <PinMarker
                 key={pin.id}
                 pin={pin}
                 onClick={() => setSelectedPin(pin)}
                 isSelected={selectedPin?.id === pin.id}
+                isPrimary={true}
+              />
+            ))}
+
+            {/* Render child pins and orphan pins (smaller) */}
+            {[...orphanPins, ...Object.values(pinsByParent).flat()].map((pin) => (
+              <PinMarker
+                key={pin.id}
+                pin={pin}
+                onClick={() => setSelectedPin(pin)}
+                isSelected={selectedPin?.id === pin.id}
+                isPrimary={false}
               />
             ))}
 
@@ -274,8 +664,20 @@ export default function MapPanel({ isExpanded, onToggle }: MapPanelProps) {
                 onClose={() => setSelectedPin(null)}
                 closeOnClick={false}
                 className="map-popup"
+                maxWidth="320px"
               >
                 <div className="bg-stone-800 rounded-lg p-3 min-w-52 shadow-xl border border-stone-600">
+                  {/* Photo if available */}
+                  {selectedPin.placeDetails?.photos?.[0] && (
+                    <div className="mb-3 -mx-3 -mt-3">
+                      <img
+                        src={selectedPin.placeDetails.photos[0].url}
+                        alt={selectedPin.name}
+                        className="w-full h-32 object-cover rounded-t-lg"
+                      />
+                    </div>
+                  )}
+
                   <div className="flex items-start gap-2 mb-2">
                     <div
                       className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0"
@@ -289,18 +691,57 @@ export default function MapPanel({ isExpanded, onToggle }: MapPanelProps) {
                     <div className="flex-1 min-w-0">
                       <h4 className="font-medium text-white text-sm">{selectedPin.name}</h4>
                       <p className="text-xs text-stone-400">{PIN_LABELS[selectedPin.type] || selectedPin.type}</p>
+                      {selectedPin.isItineraryStop && selectedPin.days && (
+                        <p className="text-xs text-orange-400 mt-0.5">{selectedPin.days} days</p>
+                      )}
                     </div>
                   </div>
+
+                  {/* Rating */}
+                  {selectedPin.placeDetails?.rating && (
+                    <div className="flex items-center gap-1 mb-2 text-xs">
+                      <Star size={12} className="text-yellow-400 fill-yellow-400" />
+                      <span className="text-white">{selectedPin.placeDetails.rating}</span>
+                      {selectedPin.placeDetails.reviewCount && (
+                        <span className="text-stone-400">({selectedPin.placeDetails.reviewCount} reviews)</span>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Address */}
+                  {selectedPin.placeDetails?.address && (
+                    <p className="text-xs text-stone-400 mb-2">{selectedPin.placeDetails.address}</p>
+                  )}
+
                   {selectedPin.description && (
                     <p className="text-xs text-stone-300 mb-3 leading-relaxed">{selectedPin.description}</p>
                   )}
-                  <button
-                    onClick={() => handleRemovePin(selectedPin.id)}
-                    className="flex items-center gap-1.5 text-xs text-red-400 hover:text-red-300 transition-colors px-2 py-1 rounded hover:bg-red-500/10"
-                  >
-                    <Trash2 size={12} />
-                    {t('removePin')}
-                  </button>
+
+                  {selectedPin.notes && (
+                    <p className="text-xs text-stone-400 italic mb-3">{selectedPin.notes}</p>
+                  )}
+
+                  {/* Action buttons */}
+                  <div className="flex items-center gap-2">
+                    {selectedPin.placeDetails?.website && (
+                      <a
+                        href={selectedPin.placeDetails.website}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex items-center gap-1 text-xs text-blue-400 hover:text-blue-300 transition-colors px-2 py-1 rounded hover:bg-blue-500/10"
+                      >
+                        <ExternalLink size={12} />
+                        Website
+                      </a>
+                    )}
+                    <button
+                      onClick={() => handleRemovePin(selectedPin.id)}
+                      className="flex items-center gap-1.5 text-xs text-red-400 hover:text-red-300 transition-colors px-2 py-1 rounded hover:bg-red-500/10"
+                    >
+                      <Trash2 size={12} />
+                      {t('removePin')}
+                    </button>
+                  </div>
                 </div>
               </Popup>
             )}

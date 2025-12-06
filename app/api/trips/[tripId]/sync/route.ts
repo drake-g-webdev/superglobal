@@ -137,7 +137,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
               days: pin.days ?? null,
               notes: pin.notes || null,
               parentStopId: null, // Parent pins don't have parents
-              placeDetails: pin.placeDetails || null,
+              placeDetails: pin.placeDetails || undefined,
             },
           });
 
@@ -165,7 +165,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
               days: pin.days ?? null,
               notes: pin.notes || null,
               parentStopId: newParentId || null, // Use the NEW parent ID
-              placeDetails: pin.placeDetails || null,
+              placeDetails: pin.placeDetails || undefined,
             },
           });
         }

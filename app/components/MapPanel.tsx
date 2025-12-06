@@ -364,8 +364,12 @@ export default function MapPanel({ isExpanded, onToggle }: MapPanelProps) {
 
   // Fetch routes between itinerary stops using Mapbox Directions API
   const fetchRoutes = useCallback(async () => {
-    if (!activeChat || itineraryStops.length < 2) return;
+    if (!activeChat || itineraryStops.length < 2) {
+      console.log('[Routes] Skipping - not enough stops:', itineraryStops.length);
+      return;
+    }
 
+    console.log('[Routes] Fetching routes for', itineraryStops.length, 'stops');
     setLoadingRoutes(true);
     const segments: RouteSegment[] = [];
 
@@ -373,6 +377,8 @@ export default function MapPanel({ isExpanded, onToggle }: MapPanelProps) {
       for (let i = 0; i < itineraryStops.length - 1; i++) {
         const from = itineraryStops[i];
         const to = itineraryStops[i + 1];
+
+        console.log(`[Routes] Fetching route ${i + 1}/${itineraryStops.length - 1}: ${from.name} -> ${to.name}`);
 
         const response = await fetch('/api/mapbox/directions', {
           method: 'POST',
@@ -386,33 +392,48 @@ export default function MapPanel({ isExpanded, onToggle }: MapPanelProps) {
 
         if (response.ok) {
           const data = await response.json();
+          console.log(`[Routes] Response for ${from.name} -> ${to.name}:`, data.success, data.error || '');
           if (data.success && data.route) {
             segments.push({
               fromPinId: from.id,
               toPinId: to.id,
               distance: data.route.totalDistance,
               duration: data.route.totalDuration,
-              polyline: data.route.geometry, // Mapbox uses 'geometry' not 'overviewPolyline'
+              polyline: data.route.geometry,
               mode: routeMode,
             });
           }
+        } else {
+          console.error(`[Routes] Failed to fetch ${from.name} -> ${to.name}:`, response.status);
         }
       }
 
+      console.log('[Routes] Total segments fetched:', segments.length);
       setRouteSegments(activeChat.id, segments);
     } catch (error) {
-      console.error('Failed to fetch routes:', error);
+      console.error('[Routes] Error fetching routes:', error);
     } finally {
       setLoadingRoutes(false);
     }
   }, [activeChat, itineraryStops, routeMode, setRouteSegments]);
 
   // Auto-fetch routes when itinerary stops change
+  // Use a debounce to wait for all stops to be added before fetching
   useEffect(() => {
-    if (itineraryStops.length >= 2 && routeSegments.length === 0) {
-      fetchRoutes();
-    }
-  }, [itineraryStops.length]);
+    if (itineraryStops.length < 2) return;
+
+    // Debounce: wait 500ms after last stop is added before fetching routes
+    const timer = setTimeout(() => {
+      // Only auto-fetch if we don't have the right number of segments
+      const expectedSegments = itineraryStops.length - 1;
+      if (routeSegments.length !== expectedSegments) {
+        console.log(`[Routes] Auto-fetching: have ${routeSegments.length} segments, need ${expectedSegments}`);
+        fetchRoutes();
+      }
+    }, 500);
+
+    return () => clearTimeout(timer);
+  }, [itineraryStops.length, routeSegments.length, fetchRoutes]);
 
   const handleSelectPin = useCallback((pin: MapPinType) => {
     setSelectedPin(pin);

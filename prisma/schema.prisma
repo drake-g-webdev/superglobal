@@ -170,6 +170,7 @@ model Trip {
   chats              Chat[]
   costItems          CostItem[]
   mapPins            MapPin[]
+  routeSegments      RouteSegment[]
   itineraryStops     ItineraryStop[]
   bucketListItems    BucketListItem[]
   packingItems       PackingItem[]
@@ -237,6 +238,32 @@ model MapPin {
   description String?
   coordinates Json     // [lng, lat]
   sourceMessageIndex Int?
+
+  // Itinerary-related fields
+  isItineraryStop Boolean @default(false)
+  itineraryOrder  Int?
+  days            Int?
+  notes           String?
+  parentStopId    String? // Links sub-locations to their parent itinerary stop
+
+  // Google Places enrichment (stored as JSON)
+  placeDetails    Json?
+
+  createdAt   DateTime @default(now())
+
+  tripId String
+  trip   Trip   @relation(fields: [tripId], references: [id], onDelete: Cascade)
+}
+
+// Route segments between itinerary stops
+model RouteSegment {
+  id          String   @id @default(cuid())
+  fromPinId   String
+  toPinId     String
+  distance    Json     // { text: string, value: number }
+  duration    Json     // { text: string, value: number }
+  polyline    String   @db.Text
+  mode        String   // driving, walking, transit, bicycling
   createdAt   DateTime @default(now())
 
   tripId String

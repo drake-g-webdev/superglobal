@@ -417,24 +417,6 @@ export default function MapPanel({ isExpanded, onToggle }: MapPanelProps) {
     }
   }, [activeChat, itineraryStops, routeMode, setRouteSegments]);
 
-  // Auto-fetch routes when itinerary stops change
-  // Use a debounce to wait for all stops to be added before fetching
-  useEffect(() => {
-    if (itineraryStops.length < 2) return;
-
-    // Debounce: wait 500ms after last stop is added before fetching routes
-    const timer = setTimeout(() => {
-      // Only auto-fetch if we don't have the right number of segments
-      const expectedSegments = itineraryStops.length - 1;
-      if (routeSegments.length !== expectedSegments) {
-        console.log(`[Routes] Auto-fetching: have ${routeSegments.length} segments, need ${expectedSegments}`);
-        fetchRoutes();
-      }
-    }, 500);
-
-    return () => clearTimeout(timer);
-  }, [itineraryStops.length, routeSegments.length, fetchRoutes]);
-
   const handleSelectPin = useCallback((pin: MapPinType) => {
     setSelectedPin(pin);
     setViewState(prev => ({
@@ -489,29 +471,6 @@ export default function MapPanel({ isExpanded, onToggle }: MapPanelProps) {
           <List size={14} />
           {showList ? 'Hide Itinerary' : 'Show Itinerary'}
         </button>
-
-        {/* Route controls */}
-        {itineraryStops.length >= 2 && (
-          <div className="flex items-center gap-2">
-            <select
-              value={routeMode}
-              onChange={(e) => setRouteMode(e.target.value as 'driving' | 'walking' | 'transit')}
-              className="bg-stone-700 border border-stone-600 rounded px-2 py-1 text-xs"
-            >
-              <option value="driving">Driving</option>
-              <option value="walking">Walking</option>
-              <option value="transit">Transit</option>
-            </select>
-            <button
-              onClick={fetchRoutes}
-              disabled={loadingRoutes}
-              className="p-1.5 rounded bg-stone-700 hover:bg-stone-600 transition-colors disabled:opacity-50"
-              title="Refresh routes"
-            >
-              {loadingRoutes ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
-            </button>
-          </div>
-        )}
       </div>
 
       {/* Map with side panel */}
@@ -523,11 +482,44 @@ export default function MapPanel({ isExpanded, onToggle }: MapPanelProps) {
         )}>
           <div className="w-72 h-full flex flex-col">
             <div className="p-3 border-b border-stone-700">
-              <h3 className="text-sm font-medium text-stone-300">Trip Itinerary</h3>
-              {itineraryStops.length > 0 && (
-                <p className="text-xs text-stone-500 mt-1">
-                  {itineraryStops.length} stops • {itineraryStops.reduce((sum, s) => sum + (s.days || 0), 0)} days
-                </p>
+              <div className="flex items-center justify-between mb-2">
+                <h3 className="text-sm font-medium text-stone-300">Trip Itinerary</h3>
+                {itineraryStops.length > 0 && (
+                  <p className="text-xs text-stone-500">
+                    {itineraryStops.length} stops • {itineraryStops.reduce((sum, s) => sum + (s.days || 0), 0)} days
+                  </p>
+                )}
+              </div>
+              {/* Generate Route button */}
+              {itineraryStops.length >= 2 && (
+                <div className="flex items-center gap-2">
+                  <select
+                    value={routeMode}
+                    onChange={(e) => setRouteMode(e.target.value as 'driving' | 'walking' | 'transit')}
+                    className="bg-stone-700 border border-stone-600 rounded px-2 py-1.5 text-xs flex-shrink-0"
+                  >
+                    <option value="driving">Driving</option>
+                    <option value="walking">Walking</option>
+                    <option value="transit">Transit</option>
+                  </select>
+                  <button
+                    onClick={fetchRoutes}
+                    disabled={loadingRoutes}
+                    className="flex-1 flex items-center justify-center gap-2 px-3 py-1.5 rounded bg-orange-600 hover:bg-orange-500 transition-colors disabled:opacity-50 text-white text-xs font-medium"
+                  >
+                    {loadingRoutes ? (
+                      <>
+                        <Loader2 size={14} className="animate-spin" />
+                        Generating...
+                      </>
+                    ) : (
+                      <>
+                        <Route size={14} />
+                        Generate Route
+                      </>
+                    )}
+                  </button>
+                </div>
               )}
             </div>
             <div className="flex-1 overflow-y-auto">

@@ -89,18 +89,61 @@ export async function POST(request: NextRequest, context: RouteContext) {
       }
     }
 
-    // Sync map pins
+    // Sync map pins (with all itinerary fields)
     if (data.mapPins) {
       await prisma.mapPin.deleteMany({ where: { tripId } });
       if (data.mapPins.length > 0) {
         await prisma.mapPin.createMany({
-          data: data.mapPins.map((pin: { name: string; type: string; description?: string; coordinates: number[]; sourceMessageIndex?: number }) => ({
+          data: data.mapPins.map((pin: {
+            name: string;
+            type: string;
+            description?: string;
+            coordinates: number[];
+            sourceMessageIndex?: number;
+            isItineraryStop?: boolean;
+            itineraryOrder?: number;
+            days?: number;
+            notes?: string;
+            parentStopId?: string;
+            placeDetails?: object;
+          }) => ({
             tripId,
             name: pin.name,
             type: pin.type,
             description: pin.description || null,
             coordinates: pin.coordinates,
             sourceMessageIndex: pin.sourceMessageIndex ?? null,
+            isItineraryStop: pin.isItineraryStop ?? false,
+            itineraryOrder: pin.itineraryOrder ?? null,
+            days: pin.days ?? null,
+            notes: pin.notes || null,
+            parentStopId: pin.parentStopId || null,
+            placeDetails: pin.placeDetails || null,
+          })),
+        });
+      }
+    }
+
+    // Sync route segments
+    if (data.routeSegments) {
+      await prisma.routeSegment.deleteMany({ where: { tripId } });
+      if (data.routeSegments.length > 0) {
+        await prisma.routeSegment.createMany({
+          data: data.routeSegments.map((segment: {
+            fromPinId: string;
+            toPinId: string;
+            distance: object;
+            duration: object;
+            polyline: string;
+            mode: string;
+          }) => ({
+            tripId,
+            fromPinId: segment.fromPinId,
+            toPinId: segment.toPinId,
+            distance: segment.distance,
+            duration: segment.duration,
+            polyline: segment.polyline,
+            mode: segment.mode,
           })),
         });
       }
@@ -215,6 +258,7 @@ export async function GET(request: NextRequest, context: RouteContext) {
         itineraryStops: { orderBy: { order: 'asc' } },
         costItems: { orderBy: { createdAt: 'asc' } },
         mapPins: { orderBy: { createdAt: 'asc' } },
+        routeSegments: { orderBy: { createdAt: 'asc' } },
         bucketListItems: { orderBy: { createdAt: 'asc' } },
         packingItems: { orderBy: { createdAt: 'asc' } },
         touristTraps: { orderBy: { createdAt: 'asc' } },

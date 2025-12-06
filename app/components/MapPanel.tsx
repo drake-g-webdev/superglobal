@@ -462,7 +462,7 @@ export default function MapPanel({ isExpanded, onToggle }: MapPanelProps) {
     }
   }, [activeChat, itineraryStops, routeMode, setRouteSegments]);
 
-  // Optimize route order using TSP algorithm
+  // Optimize route order using TSP algorithm, then auto-generate routes
   const optimizeRoute = useCallback(async () => {
     if (!activeChat || itineraryStops.length < 3) {
       console.log('[Optimize] Skipping - need at least 3 stops to optimize');
@@ -482,7 +482,7 @@ export default function MapPanel({ isExpanded, onToggle }: MapPanelProps) {
       const response = await fetch('/api/trips/optimize-route', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ stops }),
+        body: JSON.stringify({ stops, keepEndpointsFixed: true }),
       });
 
       if (response.ok) {
@@ -490,8 +490,56 @@ export default function MapPanel({ isExpanded, onToggle }: MapPanelProps) {
         console.log('[Optimize] Result:', data);
 
         if (data.success && data.optimizedOrder) {
+          // Apply the optimized order
           applyOptimizedOrder(activeChat.id, data.optimizedOrder);
           console.log(`[Optimize] Saved ${data.savedKm}km (${data.savedPercent}%)`);
+
+          // Build the optimized stops array in the new order for route generation
+          const stopMap: Record<string, MapPinType> = {};
+          itineraryStops.forEach(s => { stopMap[s.id] = s; });
+          const optimizedStops = (data.optimizedOrder as string[])
+            .map((id: string) => stopMap[id])
+            .filter((s): s is MapPinType => s !== undefined);
+
+          // Now generate routes with the optimized order
+          setOptimizing(false);
+          setLoadingRoutes(true);
+
+          const segments: RouteSegment[] = [];
+          for (let i = 0; i < optimizedStops.length - 1; i++) {
+            const from = optimizedStops[i];
+            const to = optimizedStops[i + 1];
+
+            console.log(`[Routes] Fetching route ${i + 1}/${optimizedStops.length - 1}: ${from.name} -> ${to.name}`);
+
+            const routeResponse = await fetch('/api/mapbox/directions', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                origin: from.coordinates,
+                destination: to.coordinates,
+                mode: routeMode,
+              }),
+            });
+
+            if (routeResponse.ok) {
+              const routeData = await routeResponse.json();
+              if (routeData.success && routeData.route) {
+                segments.push({
+                  fromPinId: from.id,
+                  toPinId: to.id,
+                  distance: routeData.route.totalDistance,
+                  duration: routeData.route.totalDuration,
+                  polyline: routeData.route.geometry,
+                  mode: routeMode,
+                });
+              }
+            }
+          }
+
+          console.log('[Routes] Total segments fetched:', segments.length);
+          setRouteSegments(activeChat.id, segments);
+          setLoadingRoutes(false);
         }
       } else {
         console.error('[Optimize] Failed:', response.status);
@@ -500,8 +548,9 @@ export default function MapPanel({ isExpanded, onToggle }: MapPanelProps) {
       console.error('[Optimize] Error:', error);
     } finally {
       setOptimizing(false);
+      setLoadingRoutes(false);
     }
-  }, [activeChat, itineraryStops, applyOptimizedOrder]);
+  }, [activeChat, itineraryStops, applyOptimizedOrder, routeMode, setRouteSegments]);
 
   const handleSelectPin = useCallback((pin: MapPinType) => {
     setSelectedPin(pin);

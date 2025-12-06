@@ -35,14 +35,23 @@ function calculateTotalDistance(stops: Stop[]): number {
 }
 
 // Nearest neighbor algorithm for TSP approximation
-function nearestNeighborOptimize(stops: Stop[]): Stop[] {
+// Only optimizes middle stops - keeps first and last fixed
+function nearestNeighborOptimize(stops: Stop[], fixedEnd: Stop | null): Stop[] {
   if (stops.length <= 2) return stops;
 
   const result: Stop[] = [];
   const remaining = [...stops];
 
-  // Start from the first stop (user's starting point)
+  // Start from the first stop (user's starting point) - always fixed
   result.push(remaining.shift()!);
+
+  // If we have a fixed end, remove it from remaining and add at the end
+  if (fixedEnd) {
+    const endIdx = remaining.findIndex(s => s.id === fixedEnd.id);
+    if (endIdx !== -1) {
+      remaining.splice(endIdx, 1);
+    }
+  }
 
   while (remaining.length > 0) {
     const current = result[result.length - 1];
@@ -60,20 +69,30 @@ function nearestNeighborOptimize(stops: Stop[]): Stop[] {
     result.push(remaining.splice(nearestIdx, 1)[0]);
   }
 
+  // Add fixed end point back
+  if (fixedEnd) {
+    result.push(fixedEnd);
+  }
+
   return result;
 }
 
 // 2-opt improvement for better optimization
-function twoOptImprove(stops: Stop[]): Stop[] {
+// Keeps first and last stops fixed (only swaps middle segments)
+function twoOptImprove(stops: Stop[], hasFixedEnd: boolean): Stop[] {
   if (stops.length <= 3) return stops;
 
   let improved = true;
   let route = [...stops];
 
+  // Determine the range we can modify
+  // Start at 1 (skip first stop), end before last stop if it's fixed
+  const endLimit = hasFixedEnd ? route.length - 2 : route.length - 1;
+
   while (improved) {
     improved = false;
-    for (let i = 1; i < route.length - 2; i++) {
-      for (let j = i + 1; j < route.length - 1; j++) {
+    for (let i = 1; i < endLimit; i++) {
+      for (let j = i + 1; j <= endLimit; j++) {
         // Calculate current distance
         const d1 = haversineDistance(route[i - 1].coordinates, route[i].coordinates);
         const d2 = haversineDistance(route[j].coordinates, route[j + 1].coordinates);
@@ -107,7 +126,10 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const { stops } = await request.json() as { stops: Stop[] };
+    const { stops, keepEndpointsFixed = true } = await request.json() as {
+      stops: Stop[];
+      keepEndpointsFixed?: boolean;
+    };
 
     if (!stops || stops.length < 2) {
       return NextResponse.json({
@@ -118,11 +140,14 @@ export async function POST(request: NextRequest) {
     // Calculate original distance
     const originalDistance = calculateTotalDistance(stops);
 
-    // Apply nearest neighbor algorithm
-    let optimized = nearestNeighborOptimize(stops);
+    // Get the fixed end point if we're keeping endpoints fixed
+    const fixedEnd = keepEndpointsFixed && stops.length >= 2 ? stops[stops.length - 1] : null;
 
-    // Improve with 2-opt
-    optimized = twoOptImprove(optimized);
+    // Apply nearest neighbor algorithm (keeps start fixed, optionally keeps end fixed)
+    let optimized = nearestNeighborOptimize(stops, fixedEnd);
+
+    // Improve with 2-opt (respects fixed endpoints)
+    optimized = twoOptImprove(optimized, keepEndpointsFixed);
 
     // Calculate optimized distance
     const optimizedDistance = calculateTotalDistance(optimized);
@@ -136,6 +161,7 @@ export async function POST(request: NextRequest) {
       optimizedDistanceKm: Math.round(optimizedDistance),
       savedKm: Math.round(originalDistance - optimizedDistance),
       savedPercent: Math.round((1 - optimizedDistance / originalDistance) * 100),
+      endpointsFixed: keepEndpointsFixed,
     });
   } catch (error) {
     console.error('Error optimizing route:', error);

@@ -90,44 +90,112 @@ export async function POST(request: NextRequest, context: RouteContext) {
     }
 
     // Sync map pins (with all itinerary fields)
+    // We need to handle parentStopId references carefully - parent pins get new DB IDs
     if (data.mapPins) {
       await prisma.mapPin.deleteMany({ where: { tripId } });
+
       if (data.mapPins.length > 0) {
-        await prisma.mapPin.createMany({
-          data: data.mapPins.map((pin: {
-            name: string;
-            type: string;
-            description?: string;
-            coordinates: number[];
-            sourceMessageIndex?: number;
-            isItineraryStop?: boolean;
-            itineraryOrder?: number;
-            days?: number;
-            notes?: string;
-            parentStopId?: string;
-            placeDetails?: object;
-          }) => ({
-            tripId,
-            name: pin.name,
-            type: pin.type,
-            description: pin.description || null,
-            coordinates: pin.coordinates,
-            sourceMessageIndex: pin.sourceMessageIndex ?? null,
-            isItineraryStop: pin.isItineraryStop ?? false,
-            itineraryOrder: pin.itineraryOrder ?? null,
-            days: pin.days ?? null,
-            notes: pin.notes || null,
-            parentStopId: pin.parentStopId || null,
-            placeDetails: pin.placeDetails || null,
-          })),
+        type PinInput = {
+          id?: string;
+          name: string;
+          type: string;
+          description?: string;
+          coordinates: number[];
+          sourceMessageIndex?: number;
+          isItineraryStop?: boolean;
+          itineraryOrder?: number;
+          days?: number;
+          notes?: string;
+          parentStopId?: string;
+          placeDetails?: object;
+        };
+
+        // Separate parent pins (itinerary stops) and child pins
+        const parentPins = (data.mapPins as PinInput[]).filter((p: PinInput) => p.isItineraryStop || !p.parentStopId);
+        const childPins = (data.mapPins as PinInput[]).filter((p: PinInput) => !p.isItineraryStop && p.parentStopId);
+
+        // Build a map of old client IDs to track them
+        const oldIdToPin = new Map<string, PinInput>();
+        (data.mapPins as PinInput[]).forEach((pin: PinInput) => {
+          if (pin.id) oldIdToPin.set(pin.id, pin);
         });
+
+        // Create parent pins first and build ID mapping
+        const oldToNewIdMap = new Map<string, string>();
+
+        for (const pin of parentPins) {
+          const created = await prisma.mapPin.create({
+            data: {
+              tripId,
+              name: pin.name,
+              type: pin.type,
+              description: pin.description || null,
+              coordinates: pin.coordinates,
+              sourceMessageIndex: pin.sourceMessageIndex ?? null,
+              isItineraryStop: pin.isItineraryStop ?? false,
+              itineraryOrder: pin.itineraryOrder ?? null,
+              days: pin.days ?? null,
+              notes: pin.notes || null,
+              parentStopId: null, // Parent pins don't have parents
+              placeDetails: pin.placeDetails || null,
+            },
+          });
+
+          // Map old ID to new database ID
+          if (pin.id) {
+            oldToNewIdMap.set(pin.id, created.id);
+          }
+        }
+
+        // Now create child pins with updated parentStopId references
+        for (const pin of childPins) {
+          // Look up the new ID for the parent
+          const newParentId = pin.parentStopId ? oldToNewIdMap.get(pin.parentStopId) : null;
+
+          await prisma.mapPin.create({
+            data: {
+              tripId,
+              name: pin.name,
+              type: pin.type,
+              description: pin.description || null,
+              coordinates: pin.coordinates,
+              sourceMessageIndex: pin.sourceMessageIndex ?? null,
+              isItineraryStop: false,
+              itineraryOrder: null,
+              days: pin.days ?? null,
+              notes: pin.notes || null,
+              parentStopId: newParentId || null, // Use the NEW parent ID
+              placeDetails: pin.placeDetails || null,
+            },
+          });
+        }
       }
     }
 
-    // Sync route segments
+    // Sync route segments (need to update pin IDs if they changed)
+    // Note: oldToNewIdMap is built in the mapPins sync above
     if (data.routeSegments) {
       await prisma.routeSegment.deleteMany({ where: { tripId } });
       if (data.routeSegments.length > 0) {
+        // Build ID map from mapPins if not already done
+        const pinIdMap = new Map<string, string>();
+        if (data.mapPins) {
+          // Get all pins from database (they were just created above)
+          const dbPins = await prisma.mapPin.findMany({ where: { tripId } });
+          // Match by name+coordinates since we just recreated them
+          for (const clientPin of data.mapPins as { id?: string; name: string; coordinates: number[] }[]) {
+            if (clientPin.id) {
+              const dbPin = dbPins.find(p =>
+                p.name === clientPin.name &&
+                JSON.stringify(p.coordinates) === JSON.stringify(clientPin.coordinates)
+              );
+              if (dbPin) {
+                pinIdMap.set(clientPin.id, dbPin.id);
+              }
+            }
+          }
+        }
+
         await prisma.routeSegment.createMany({
           data: data.routeSegments.map((segment: {
             fromPinId: string;
@@ -138,8 +206,8 @@ export async function POST(request: NextRequest, context: RouteContext) {
             mode: string;
           }) => ({
             tripId,
-            fromPinId: segment.fromPinId,
-            toPinId: segment.toPinId,
+            fromPinId: pinIdMap.get(segment.fromPinId) || segment.fromPinId,
+            toPinId: pinIdMap.get(segment.toPinId) || segment.toPinId,
             distance: segment.distance,
             duration: segment.duration,
             polyline: segment.polyline,

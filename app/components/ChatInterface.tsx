@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useEffect, useCallback } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { Send, MapPin, DollarSign, User, Settings, Compass, Calendar, Target, Map as MapIcon, Plus, Check, Loader2, MessageSquare, ChevronLeft, ChevronRight, Calculator, ListChecks, Backpack, CalendarDays, Mountain, Sailboat, Tent, Footprints, X, Menu, ArrowLeft } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import ReactMarkdown, { Components } from 'react-markdown';
@@ -729,26 +729,40 @@ export default function ChatInterface() {
             return parts.length > 0 ? parts : text;
         };
 
+        // Helper to process children and convert any string children with placeholders to buttons
+        const processChildren = (children: React.ReactNode): React.ReactNode => {
+            return React.Children.map(children, child => {
+                if (typeof child === 'string') {
+                    // Check if this string contains any placeholders
+                    if (/⟦(LOC|COST)\d+⟧/.test(child)) {
+                        return renderTextWithButtons(child);
+                    }
+                    return child;
+                }
+                return child;
+            });
+        };
+
         // Custom markdown components with proper styling
         const markdownComponents: Components = {
-            p: ({ children }) => <p className="mb-3 last:mb-0 leading-relaxed">{children}</p>,
-            h1: ({ children }) => <h1 className="text-xl font-bold text-orange-400 mb-3 mt-4 first:mt-0">{children}</h1>,
-            h2: ({ children }) => <h2 className="text-lg font-bold text-orange-400 mb-2 mt-4 first:mt-0">{children}</h2>,
-            h3: ({ children }) => <h3 className="text-base font-bold text-orange-300 mb-2 mt-3 first:mt-0">{children}</h3>,
-            h4: ({ children }) => <h4 className="text-sm font-bold text-stone-200 mb-2 mt-2 first:mt-0">{children}</h4>,
-            strong: ({ children }) => <strong className="font-bold text-stone-100">{children}</strong>,
-            em: ({ children }) => <em className="italic text-stone-300">{children}</em>,
+            p: ({ children }) => <p className="mb-3 last:mb-0 leading-relaxed">{processChildren(children)}</p>,
+            h1: ({ children }) => <h1 className="text-xl font-bold text-orange-400 mb-3 mt-4 first:mt-0">{processChildren(children)}</h1>,
+            h2: ({ children }) => <h2 className="text-lg font-bold text-orange-400 mb-2 mt-4 first:mt-0">{processChildren(children)}</h2>,
+            h3: ({ children }) => <h3 className="text-base font-bold text-orange-300 mb-2 mt-3 first:mt-0">{processChildren(children)}</h3>,
+            h4: ({ children }) => <h4 className="text-sm font-bold text-stone-200 mb-2 mt-2 first:mt-0">{processChildren(children)}</h4>,
+            strong: ({ children }) => <strong className="font-bold text-stone-100">{processChildren(children)}</strong>,
+            em: ({ children }) => <em className="italic text-stone-300">{processChildren(children)}</em>,
             ul: ({ children }) => <ul className="list-disc list-inside mb-3 space-y-1 ml-2">{children}</ul>,
             ol: ({ children }) => <ol className="list-decimal list-inside mb-3 space-y-1 ml-2">{children}</ol>,
-            li: ({ children }) => <li className="text-stone-300">{children}</li>,
+            li: ({ children }) => <li className="text-stone-300">{processChildren(children)}</li>,
             a: ({ href, children }) => (
                 <a href={href} target="_blank" rel="noopener noreferrer" className="text-orange-400 hover:underline font-semibold">
-                    {children}
+                    {processChildren(children)}
                 </a>
             ),
             blockquote: ({ children }) => (
                 <blockquote className="border-l-4 border-orange-500/50 pl-4 py-1 my-3 italic text-stone-400 bg-stone-800/30 rounded-r">
-                    {children}
+                    {processChildren(children)}
                 </blockquote>
             ),
             code: ({ className, children }) => {
@@ -764,13 +778,6 @@ export default function ChatInterface() {
             },
             pre: ({ children }) => <pre className="bg-stone-900 p-3 rounded-lg my-3 overflow-x-auto">{children}</pre>,
             hr: () => <hr className="border-stone-700 my-4" />,
-            // Handle text nodes to inject our inline buttons
-            text: ({ children }) => {
-                if (typeof children === 'string') {
-                    return <>{renderTextWithButtons(children)}</>;
-                }
-                return <>{children}</>;
-            },
         };
 
         return (

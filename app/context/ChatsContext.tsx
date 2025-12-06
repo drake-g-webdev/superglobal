@@ -394,7 +394,7 @@ interface ChatsContextType {
   activeChat: Chat | null;
   activeChatId: string | null;
   createChat: (title?: string) => Chat;
-  deleteChat: (id: string) => void;
+  deleteChat: (id: string) => Promise<void>;
   setActiveChat: (id: string) => void;
   updateChat: (id: string, updates: Partial<Omit<Chat, 'id' | 'createdAt'>>) => void;
   addMessage: (chatId: string, message: Message) => void;
@@ -443,6 +443,8 @@ interface ChatsContextType {
   setRouteSegments: (chatId: string, segments: RouteSegment[]) => void;
   // Update individual map pin
   updateMapPin: (chatId: string, pinId: string, updates: Partial<MapPin>) => void;
+  // Reorder itinerary stops (drag-and-drop) - also clears route segments
+  reorderItineraryStops: (chatId: string, fromIndex: number, toIndex: number) => void;
   // Database sync status
   isSyncing: boolean;
 }
@@ -849,7 +851,10 @@ export function ChatsProvider({ children }: { children: ReactNode }) {
     return newChat;
   };
 
-  const deleteChat = (id: string) => {
+  const deleteChat = async (id: string) => {
+    // Find the chat to get its tripId before removing from state
+    const chatToDelete = chats.find(c => c.id === id);
+
     const filtered = chats.filter(c => c.id !== id);
 
     if (filtered.length === 0) {
@@ -862,6 +867,18 @@ export function ChatsProvider({ children }: { children: ReactNode }) {
       // If we deleted the active chat, switch to the first remaining chat
       if (id === activeChatId) {
         setActiveChatId(filtered[0].id);
+      }
+    }
+
+    // Delete from database if it exists there
+    if (userId && chatToDelete?.tripId) {
+      try {
+        // Delete the chat
+        await fetch(`/api/chats/${id}`, { method: 'DELETE' });
+        // Also delete the trip (which cascades to delete all related data)
+        await fetch(`/api/trips/${chatToDelete.tripId}`, { method: 'DELETE' });
+      } catch (error) {
+        console.error('Failed to delete chat/trip from database:', error);
       }
     }
   };
@@ -1495,6 +1512,48 @@ export function ChatsProvider({ children }: { children: ReactNode }) {
     ));
   };
 
+  // Reorder itinerary stops (drag-and-drop)
+  // Also clears route segments since the order changed
+  const reorderItineraryStops = (chatId: string, fromIndex: number, toIndex: number) => {
+    if (fromIndex === toIndex) return;
+
+    setChats(prev => prev.map(chat => {
+      if (chat.id !== chatId) return chat;
+
+      // Get all itinerary stops sorted by current order
+      const stops = chat.mapPins
+        .filter(p => p.isItineraryStop)
+        .sort((a, b) => (a.itineraryOrder ?? 0) - (b.itineraryOrder ?? 0));
+
+      // Reorder the stops array
+      const reorderedStops = [...stops];
+      const [removed] = reorderedStops.splice(fromIndex, 1);
+      reorderedStops.splice(toIndex, 0, removed);
+
+      // Create a map of old stop ID -> new itinerary order
+      const newOrderMap = new Map<string, number>();
+      reorderedStops.forEach((stop, idx) => {
+        newOrderMap.set(stop.id, idx);
+      });
+
+      // Update all map pins with new itinerary orders
+      const updatedPins = chat.mapPins.map(pin => {
+        if (pin.isItineraryStop) {
+          const newOrder = newOrderMap.get(pin.id);
+          return { ...pin, itineraryOrder: newOrder };
+        }
+        return pin;
+      });
+
+      return {
+        ...chat,
+        mapPins: updatedPins,
+        routeSegments: [], // Clear routes since order changed
+        updatedAt: Date.now(),
+      };
+    }));
+  };
+
   // Don't render children until initial load is complete
   if (!isLoaded) {
     return null;
@@ -1544,6 +1603,7 @@ export function ChatsProvider({ children }: { children: ReactNode }) {
       clearConversationVariables,
       setRouteSegments,
       updateMapPin,
+      reorderItineraryStops,
       isSyncing,
     }}>
       {children}

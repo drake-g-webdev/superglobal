@@ -1,8 +1,8 @@
 "use client";
 
-import { useState, useCallback, useEffect, useMemo } from 'react';
+import { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import Map, { Marker, Popup, NavigationControl, Source, Layer } from 'react-map-gl';
-import { MapPin, Bed, UtensilsCrossed, Mountain, Landmark, Bus, Trash2, Map as MapIcon, List, Building2, ChevronDown, ChevronRight, Clock, Star, ExternalLink, Route, Loader2, RefreshCw } from 'lucide-react';
+import { MapPin, Bed, UtensilsCrossed, Mountain, Landmark, Bus, Trash2, Map as MapIcon, List, Building2, ChevronDown, ChevronRight, Clock, Star, ExternalLink, Route, Loader2, GripVertical } from 'lucide-react';
 import clsx from 'clsx';
 import { useChats, MapPin as MapPinType, MapPinType as PinType, RouteSegment } from '../context/ChatsContext';
 import { useTranslations } from '../context/LocaleContext';
@@ -154,6 +154,13 @@ function ItineraryStopItem({
   isSelected,
   onRemove,
   routeToNext,
+  index,
+  onDragStart,
+  onDragOver,
+  onDragEnd,
+  onDrop,
+  isDragging,
+  isDragOver,
 }: {
   pin: MapPinType;
   childPins: MapPinType[];
@@ -163,11 +170,39 @@ function ItineraryStopItem({
   isSelected: boolean;
   onRemove: (pinId: string) => void;
   routeToNext?: RouteSegment;
+  index: number;
+  onDragStart: (index: number) => void;
+  onDragOver: (e: React.DragEvent, index: number) => void;
+  onDragEnd: () => void;
+  onDrop: (index: number) => void;
+  isDragging: boolean;
+  isDragOver: boolean;
 }) {
   const hasChildren = childPins.length > 0;
 
   return (
-    <div className="border-b border-stone-800">
+    <div
+      className={clsx(
+        "border-b border-stone-800 transition-all",
+        isDragging && "opacity-50",
+        isDragOver && "border-t-2 border-t-orange-500"
+      )}
+      draggable
+      onDragStart={(e) => {
+        e.dataTransfer.effectAllowed = 'move';
+        onDragStart(index);
+      }}
+      onDragOver={(e) => {
+        e.preventDefault();
+        e.dataTransfer.dropEffect = 'move';
+        onDragOver(e, index);
+      }}
+      onDragEnd={onDragEnd}
+      onDrop={(e) => {
+        e.preventDefault();
+        onDrop(index);
+      }}
+    >
       {/* Primary stop header */}
       <div
         className={clsx(
@@ -176,6 +211,11 @@ function ItineraryStopItem({
         )}
         onClick={() => onSelect(pin)}
       >
+        {/* Drag handle */}
+        <div className="cursor-grab active:cursor-grabbing text-stone-500 hover:text-stone-300 -ml-1">
+          <GripVertical size={16} />
+        </div>
+
         {/* Expand/collapse button */}
         <button
           onClick={(e) => {
@@ -275,7 +315,7 @@ function ItineraryStopItem({
 }
 
 export default function MapPanel({ isExpanded, onToggle }: MapPanelProps) {
-  const { activeChat, removeMapPin, setRouteSegments } = useChats();
+  const { activeChat, removeMapPin, setRouteSegments, reorderItineraryStops } = useChats();
   const t = useTranslations('map');
   const [selectedPin, setSelectedPin] = useState<MapPinType | null>(null);
   const [viewState, setViewState] = useState({
@@ -287,6 +327,10 @@ export default function MapPanel({ isExpanded, onToggle }: MapPanelProps) {
   const [expandedStops, setExpandedStops] = useState<Set<string>>(new Set());
   const [loadingRoutes, setLoadingRoutes] = useState(false);
   const [routeMode, setRouteMode] = useState<'driving' | 'walking' | 'transit'>('driving');
+
+  // Drag and drop state
+  const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
+  const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
 
   const mapboxToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
 
@@ -439,6 +483,30 @@ export default function MapPanel({ isExpanded, onToggle }: MapPanelProps) {
     });
   }, []);
 
+  // Drag and drop handlers for itinerary reordering
+  const handleDragStart = useCallback((index: number) => {
+    setDraggedIndex(index);
+  }, []);
+
+  const handleDragOver = useCallback((e: React.DragEvent, index: number) => {
+    if (draggedIndex === null || draggedIndex === index) return;
+    setDragOverIndex(index);
+  }, [draggedIndex]);
+
+  const handleDragEnd = useCallback(() => {
+    setDraggedIndex(null);
+    setDragOverIndex(null);
+  }, []);
+
+  const handleDrop = useCallback((toIndex: number) => {
+    if (draggedIndex === null || !activeChat) return;
+    if (draggedIndex !== toIndex) {
+      reorderItineraryStops(activeChat.id, draggedIndex, toIndex);
+    }
+    setDraggedIndex(null);
+    setDragOverIndex(null);
+  }, [draggedIndex, activeChat, reorderItineraryStops]);
+
   // Get route segment for a given stop (route TO the next stop)
   const getRouteAfterStop = useCallback((stopId: string) => {
     return routeSegments.find(s => s.fromPinId === stopId);
@@ -524,7 +592,7 @@ export default function MapPanel({ isExpanded, onToggle }: MapPanelProps) {
             </div>
             <div className="flex-1 overflow-y-auto">
               {/* Itinerary stops with nested children */}
-              {itineraryStops.map((stop) => (
+              {itineraryStops.map((stop, index) => (
                 <ItineraryStopItem
                   key={stop.id}
                   pin={stop}
@@ -535,6 +603,13 @@ export default function MapPanel({ isExpanded, onToggle }: MapPanelProps) {
                   isSelected={selectedPin?.id === stop.id}
                   onRemove={handleRemovePin}
                   routeToNext={getRouteAfterStop(stop.id)}
+                  index={index}
+                  onDragStart={handleDragStart}
+                  onDragOver={handleDragOver}
+                  onDragEnd={handleDragEnd}
+                  onDrop={handleDrop}
+                  isDragging={draggedIndex === index}
+                  isDragOver={dragOverIndex === index}
                 />
               ))}
 

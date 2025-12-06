@@ -2,10 +2,10 @@
 providers = ["node"]
 
 [phases.setup]
-nixPkgs = ["nodejs_20"]
+nixPkgs = ["nodejs_20", "python311"]
 
 [phases.install]
-cmds = ["npm install"]
+cmds = ["npm install", "pip install -r api/requirements.txt"]
 
 [phases.build]
 cmds = ["npm run build"]

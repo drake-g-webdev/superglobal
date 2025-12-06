@@ -488,6 +488,8 @@ export function ChatsProvider({ children }: { children: ReactNode }) {
   const [isSyncing, setIsSyncing] = useState(false);
   const syncTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const lastSyncedRef = useRef<string>('');
+  // Track ID mappings from old local IDs to new DB IDs (for when extraction uses stale IDs)
+  const idMappingRef = useRef<Map<string, string>>(new Map());
 
   // Load chats from database
   const loadFromDatabase = useCallback(async (): Promise<Chat[] | null> => {
@@ -633,6 +635,9 @@ export function ChatsProvider({ children }: { children: ReactNode }) {
 
               // Track the ID change so we can update React state
               updatedChats.push({ oldId: chat.id, newId: data.id, tripId: data.tripId });
+
+              // Store ID mapping so extraction functions can find the right chat even with stale IDs
+              idMappingRef.current.set(chat.id, data.id);
 
               // Now sync the full chat data (messages, etc.) using the new DB ID
               await fetch(`/api/chats/${data.id}`, {
@@ -838,8 +843,11 @@ export function ChatsProvider({ children }: { children: ReactNode }) {
   };
 
   const addMessage = (chatId: string, message: Message) => {
+    // Resolve chatId - it might be a stale local ID if the chat was synced to DB during async operations
+    const resolvedId = idMappingRef.current.get(chatId) || chatId;
+
     setChats(prev => prev.map(chat =>
-      chat.id === chatId
+      chat.id === resolvedId
         ? { ...chat, messages: [...chat.messages, message], updatedAt: Date.now() }
         : chat
     ));
@@ -918,8 +926,12 @@ export function ChatsProvider({ children }: { children: ReactNode }) {
 
   // Extracted locations management (for "Add to Map" buttons persistence)
   const setExtractedLocations = (chatId: string, messageIndex: number, locations: ExtractedLocation[]) => {
+    // Resolve chatId - it might be a stale local ID if the chat was synced to DB during extraction
+    const resolvedId = idMappingRef.current.get(chatId) || chatId;
+    console.log('[setExtractedLocations] chatId:', chatId, 'resolvedId:', resolvedId, 'messageIndex:', messageIndex, 'locations:', locations.length);
+
     setChats(prev => prev.map(chat =>
-      chat.id === chatId
+      chat.id === resolvedId
         ? {
             ...chat,
             extractedLocations: {
@@ -934,8 +946,12 @@ export function ChatsProvider({ children }: { children: ReactNode }) {
 
   // Extracted costs management (for "Add to Budget" buttons persistence)
   const setExtractedCosts = (chatId: string, messageIndex: number, costs: ExtractedCost[]) => {
+    // Resolve chatId - it might be a stale local ID if the chat was synced to DB during extraction
+    const resolvedId = idMappingRef.current.get(chatId) || chatId;
+    console.log('[setExtractedCosts] chatId:', chatId, 'resolvedId:', resolvedId, 'messageIndex:', messageIndex, 'costs:', costs.length);
+
     setChats(prev => prev.map(chat =>
-      chat.id === chatId
+      chat.id === resolvedId
         ? {
             ...chat,
             extractedCosts: {
@@ -949,8 +965,12 @@ export function ChatsProvider({ children }: { children: ReactNode }) {
   };
 
   const setExtractedItinerary = (chatId: string, messageIndex: number, itinerary: ExtractedItinerary) => {
+    // Resolve chatId - it might be a stale local ID if the chat was synced to DB during extraction
+    const resolvedId = idMappingRef.current.get(chatId) || chatId;
+    console.log('[setExtractedItinerary] chatId:', chatId, 'resolvedId:', resolvedId, 'messageIndex:', messageIndex);
+
     setChats(prev => prev.map(chat =>
-      chat.id === chatId
+      chat.id === resolvedId
         ? {
             ...chat,
             extractedItineraries: {
@@ -1361,8 +1381,11 @@ export function ChatsProvider({ children }: { children: ReactNode }) {
 
   // Merge new variables with existing (deduplicate arrays, merge customNotes)
   const mergeConversationVariables = (chatId: string, newVars: Partial<ConversationVariables>) => {
+    // Resolve chatId - it might be a stale local ID if the chat was synced to DB during extraction
+    const resolvedId = idMappingRef.current.get(chatId) || chatId;
+
     setChats(prev => prev.map(chat => {
-      if (chat.id !== chatId) return chat;
+      if (chat.id !== resolvedId) return chat;
 
       const existing = chat.conversationVariables;
       const merged: ConversationVariables = {

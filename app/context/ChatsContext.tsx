@@ -445,6 +445,8 @@ interface ChatsContextType {
   updateMapPin: (chatId: string, pinId: string, updates: Partial<MapPin>) => void;
   // Reorder itinerary stops (drag-and-drop) - also clears route segments
   reorderItineraryStops: (chatId: string, fromIndex: number, toIndex: number) => void;
+  // Apply optimized route order (from AI optimization)
+  applyOptimizedOrder: (chatId: string, orderedStopIds: string[]) => void;
   // Database sync status
   isSyncing: boolean;
 }
@@ -1554,6 +1556,34 @@ export function ChatsProvider({ children }: { children: ReactNode }) {
     }));
   };
 
+  // Apply optimized route order (from AI optimization)
+  const applyOptimizedOrder = (chatId: string, orderedStopIds: string[]) => {
+    setChats(prev => prev.map(chat => {
+      if (chat.id !== chatId) return chat;
+
+      // Create a map of stop ID -> new order
+      const newOrderMap = new Map<string, number>();
+      orderedStopIds.forEach((id, idx) => {
+        newOrderMap.set(id, idx);
+      });
+
+      // Update all map pins with new itinerary orders
+      const updatedPins = chat.mapPins.map(pin => {
+        if (pin.isItineraryStop && newOrderMap.has(pin.id)) {
+          return { ...pin, itineraryOrder: newOrderMap.get(pin.id) };
+        }
+        return pin;
+      });
+
+      return {
+        ...chat,
+        mapPins: updatedPins,
+        routeSegments: [], // Clear routes since order changed
+        updatedAt: Date.now(),
+      };
+    }));
+  };
+
   // Don't render children until initial load is complete
   if (!isLoaded) {
     return null;
@@ -1604,6 +1634,7 @@ export function ChatsProvider({ children }: { children: ReactNode }) {
       setRouteSegments,
       updateMapPin,
       reorderItineraryStops,
+      applyOptimizedOrder,
       isSyncing,
     }}>
       {children}

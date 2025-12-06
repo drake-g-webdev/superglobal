@@ -2,7 +2,7 @@
 
 import { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import Map, { Marker, Popup, NavigationControl, Source, Layer } from 'react-map-gl';
-import { MapPin, Bed, UtensilsCrossed, Mountain, Landmark, Bus, Trash2, Map as MapIcon, List, Building2, ChevronDown, ChevronRight, Clock, Star, ExternalLink, Route, Loader2, GripVertical } from 'lucide-react';
+import { MapPin, Bed, UtensilsCrossed, Mountain, Landmark, Bus, Trash2, Map as MapIcon, List, Building2, ChevronDown, ChevronRight, Clock, Star, ExternalLink, Route, Loader2, GripVertical, Brain } from 'lucide-react';
 import clsx from 'clsx';
 import { useChats, MapPin as MapPinType, MapPinType as PinType, RouteSegment } from '../context/ChatsContext';
 import { useTranslations } from '../context/LocaleContext';
@@ -315,7 +315,7 @@ function ItineraryStopItem({
 }
 
 export default function MapPanel({ isExpanded, onToggle }: MapPanelProps) {
-  const { activeChat, removeMapPin, setRouteSegments, reorderItineraryStops } = useChats();
+  const { activeChat, removeMapPin, setRouteSegments, reorderItineraryStops, applyOptimizedOrder } = useChats();
   const t = useTranslations('map');
   const [selectedPin, setSelectedPin] = useState<MapPinType | null>(null);
   const [viewState, setViewState] = useState({
@@ -326,6 +326,7 @@ export default function MapPanel({ isExpanded, onToggle }: MapPanelProps) {
   const [showList, setShowList] = useState(true);
   const [expandedStops, setExpandedStops] = useState<Set<string>>(new Set());
   const [loadingRoutes, setLoadingRoutes] = useState(false);
+  const [optimizing, setOptimizing] = useState(false);
   const [routeMode, setRouteMode] = useState<'driving' | 'walking' | 'transit'>('driving');
 
   // Drag and drop state
@@ -461,6 +462,47 @@ export default function MapPanel({ isExpanded, onToggle }: MapPanelProps) {
     }
   }, [activeChat, itineraryStops, routeMode, setRouteSegments]);
 
+  // Optimize route order using TSP algorithm
+  const optimizeRoute = useCallback(async () => {
+    if (!activeChat || itineraryStops.length < 3) {
+      console.log('[Optimize] Skipping - need at least 3 stops to optimize');
+      return;
+    }
+
+    console.log('[Optimize] Optimizing route for', itineraryStops.length, 'stops');
+    setOptimizing(true);
+
+    try {
+      const stops = itineraryStops.map(pin => ({
+        id: pin.id,
+        name: pin.name,
+        coordinates: pin.coordinates,
+      }));
+
+      const response = await fetch('/api/trips/optimize-route', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ stops }),
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        console.log('[Optimize] Result:', data);
+
+        if (data.success && data.optimizedOrder) {
+          applyOptimizedOrder(activeChat.id, data.optimizedOrder);
+          console.log(`[Optimize] Saved ${data.savedKm}km (${data.savedPercent}%)`);
+        }
+      } else {
+        console.error('[Optimize] Failed:', response.status);
+      }
+    } catch (error) {
+      console.error('[Optimize] Error:', error);
+    } finally {
+      setOptimizing(false);
+    }
+  }, [activeChat, itineraryStops, applyOptimizedOrder]);
+
   const handleSelectPin = useCallback((pin: MapPinType) => {
     setSelectedPin(pin);
     setViewState(prev => ({
@@ -570,6 +612,21 @@ export default function MapPanel({ isExpanded, onToggle }: MapPanelProps) {
                     <option value="walking">Walking</option>
                     <option value="transit">Transit</option>
                   </select>
+                  {/* Optimize route button */}
+                  {itineraryStops.length >= 3 && (
+                    <button
+                      onClick={optimizeRoute}
+                      disabled={optimizing}
+                      className="p-1.5 rounded bg-purple-600 hover:bg-purple-500 transition-colors disabled:opacity-50 text-white flex-shrink-0"
+                      title="Optimize route order (AI)"
+                    >
+                      {optimizing ? (
+                        <Loader2 size={14} className="animate-spin" />
+                      ) : (
+                        <Brain size={14} />
+                      )}
+                    </button>
+                  )}
                   <button
                     onClick={fetchRoutes}
                     disabled={loadingRoutes}

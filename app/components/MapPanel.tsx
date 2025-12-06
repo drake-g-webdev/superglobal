@@ -161,6 +161,9 @@ function ItineraryStopItem({
   onDrop,
   isDragging,
   isDragOver,
+  onTouchStart,
+  onTouchMove,
+  onTouchEnd,
 }: {
   pin: MapPinType;
   childPins: MapPinType[];
@@ -177,13 +180,16 @@ function ItineraryStopItem({
   onDrop: (index: number) => void;
   isDragging: boolean;
   isDragOver: boolean;
+  onTouchStart: (index: number, e: React.TouchEvent) => void;
+  onTouchMove: (e: React.TouchEvent) => void;
+  onTouchEnd: () => void;
 }) {
   const hasChildren = childPins.length > 0;
 
   return (
     <div
       className={clsx(
-        "border-b border-stone-800 transition-all",
+        "border-b border-stone-800 transition-all touch-none",
         isDragging && "opacity-50",
         isDragOver && "border-t-2 border-t-orange-500"
       )}
@@ -202,6 +208,9 @@ function ItineraryStopItem({
         e.preventDefault();
         onDrop(index);
       }}
+      onTouchStart={(e) => onTouchStart(index, e)}
+      onTouchMove={onTouchMove}
+      onTouchEnd={onTouchEnd}
     >
       {/* Primary stop header */}
       <div
@@ -332,6 +341,15 @@ export default function MapPanel({ isExpanded, onToggle }: MapPanelProps) {
   // Drag and drop state
   const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
   const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
+
+  // Touch drag state for mobile
+  const touchDragRef = useRef<{
+    startY: number;
+    currentY: number;
+    itemHeight: number;
+    scrollContainer: HTMLElement | null;
+  } | null>(null);
+  const itineraryListRef = useRef<HTMLDivElement>(null);
 
   const mapboxToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
 
@@ -599,6 +617,52 @@ export default function MapPanel({ isExpanded, onToggle }: MapPanelProps) {
     setDragOverIndex(null);
   }, [draggedIndex, activeChat, reorderItineraryStops]);
 
+  // Touch event handlers for mobile drag-and-drop
+  const handleTouchStart = useCallback((index: number, e: React.TouchEvent) => {
+    const touch = e.touches[0];
+    const target = e.currentTarget as HTMLElement;
+    const itemHeight = target.getBoundingClientRect().height;
+
+    touchDragRef.current = {
+      startY: touch.clientY,
+      currentY: touch.clientY,
+      itemHeight,
+      scrollContainer: itineraryListRef.current,
+    };
+
+    setDraggedIndex(index);
+  }, []);
+
+  const handleTouchMove = useCallback((e: React.TouchEvent) => {
+    if (draggedIndex === null || !touchDragRef.current) return;
+
+    const touch = e.touches[0];
+    touchDragRef.current.currentY = touch.clientY;
+
+    // Calculate which item we're over based on position
+    const deltaY = touch.clientY - touchDragRef.current.startY;
+    const itemsMoved = Math.round(deltaY / touchDragRef.current.itemHeight);
+    const newIndex = Math.max(0, Math.min(itineraryStops.length - 1, draggedIndex + itemsMoved));
+
+    if (newIndex !== dragOverIndex) {
+      setDragOverIndex(newIndex);
+    }
+
+    // Prevent scrolling while dragging
+    e.preventDefault();
+  }, [draggedIndex, dragOverIndex, itineraryStops.length]);
+
+  const handleTouchEnd = useCallback(() => {
+    if (draggedIndex !== null && dragOverIndex !== null && activeChat) {
+      if (draggedIndex !== dragOverIndex) {
+        reorderItineraryStops(activeChat.id, draggedIndex, dragOverIndex);
+      }
+    }
+    setDraggedIndex(null);
+    setDragOverIndex(null);
+    touchDragRef.current = null;
+  }, [draggedIndex, dragOverIndex, activeChat, reorderItineraryStops]);
+
   // Get route segment for a given stop (route TO the next stop)
   const getRouteAfterStop = useCallback((stopId: string) => {
     return routeSegments.find(s => s.fromPinId === stopId);
@@ -697,7 +761,7 @@ export default function MapPanel({ isExpanded, onToggle }: MapPanelProps) {
                 </div>
               )}
             </div>
-            <div className="flex-1 overflow-y-auto">
+            <div ref={itineraryListRef} className="flex-1 overflow-y-auto">
               {/* Itinerary stops with nested children */}
               {itineraryStops.map((stop, index) => (
                 <ItineraryStopItem
@@ -717,6 +781,9 @@ export default function MapPanel({ isExpanded, onToggle }: MapPanelProps) {
                   onDrop={handleDrop}
                   isDragging={draggedIndex === index}
                   isDragOver={dragOverIndex === index}
+                  onTouchStart={handleTouchStart}
+                  onTouchMove={handleTouchMove}
+                  onTouchEnd={handleTouchEnd}
                 />
               ))}
 

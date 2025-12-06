@@ -1429,7 +1429,7 @@ export default function ChatInterface() {
                         </div>
 
                         {/* Input Area - extra padding at bottom for mobile nav bar */}
-                        <div className="p-3 pb-16 md:pb-3 bg-stone-900 border-t border-stone-700">
+                        <div className="p-3 pb-20 md:pb-3 bg-stone-900 border-t border-stone-700">
                             {activeChat?.tripSetupComplete ? (
                                 <div className="flex gap-2">
                                     <input

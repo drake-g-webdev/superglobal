@@ -1,0 +1,8 @@
+# Ignore Python files - API runs separately
+api/
+ingest.py
+requirements.txt
+*.py
+__pycache__/
+.python-version
+.mise.toml

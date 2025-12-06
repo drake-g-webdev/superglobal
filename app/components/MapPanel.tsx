@@ -553,6 +553,7 @@ export default function MapPanel({ isExpanded, onToggle }: MapPanelProps) {
   }, [activeChat, itineraryStops, applyOptimizedOrder, routeMode, setRouteSegments]);
 
   const handleSelectPin = useCallback((pin: MapPinType) => {
+    console.log('[MapPanel] Pin selected:', pin.name, 'placeDetails:', JSON.stringify(pin.placeDetails, null, 2));
     setSelectedPin(pin);
     setViewState(prev => ({
       ...prev,
@@ -661,21 +662,6 @@ export default function MapPanel({ isExpanded, onToggle }: MapPanelProps) {
                     <option value="walking">Walking</option>
                     <option value="transit">Transit</option>
                   </select>
-                  {/* Optimize route button */}
-                  {itineraryStops.length >= 3 && (
-                    <button
-                      onClick={optimizeRoute}
-                      disabled={optimizing}
-                      className="p-1.5 rounded bg-purple-600 hover:bg-purple-500 transition-colors disabled:opacity-50 text-white flex-shrink-0"
-                      title="Optimize route order (AI)"
-                    >
-                      {optimizing ? (
-                        <Loader2 size={14} className="animate-spin" />
-                      ) : (
-                        <Brain size={14} />
-                      )}
-                    </button>
-                  )}
                   <button
                     onClick={fetchRoutes}
                     disabled={loadingRoutes}
@@ -693,6 +679,21 @@ export default function MapPanel({ isExpanded, onToggle }: MapPanelProps) {
                       </>
                     )}
                   </button>
+                  {/* Optimize route button */}
+                  {itineraryStops.length >= 3 && (
+                    <button
+                      onClick={optimizeRoute}
+                      disabled={optimizing}
+                      className="p-1.5 rounded bg-purple-600 hover:bg-purple-500 transition-colors disabled:opacity-50 text-white flex-shrink-0"
+                      title="Optimize route order (AI)"
+                    >
+                      {optimizing ? (
+                        <Loader2 size={14} className="animate-spin" />
+                      ) : (
+                        <Brain size={14} />
+                      )}
+                    </button>
+                  )}
                 </div>
               )}
             </div>

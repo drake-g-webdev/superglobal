@@ -6,7 +6,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import ReactMarkdown, { Components } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import clsx from 'clsx';
-import { useChats, MapPinType, ExtractedLocation, MessageLocations, ExtractedCost, MessageCosts, CostCategory, ExtractedItinerary, MessageItineraries, ItineraryStop } from '../context/ChatsContext';
+import { useChats, MapPinType, ExtractedLocation, MessageLocations, ExtractedCost, MessageCosts, CostCategory, ExtractedItinerary, MessageItineraries, ItineraryStop, PlaceDetails } from '../context/ChatsContext';
 import { useProfile } from '../context/ProfileContext';
 import { useTranslations } from '../context/LocaleContext';
 import ChatSidebar from './ChatSidebar';
@@ -625,6 +625,50 @@ export default function ChatInterface() {
                     const parentStopId = findNearestItineraryStop(coords);
                     console.log('[Add to Map] Parent stop ID:', parentStopId);
 
+                    // Fetch place details with photos from Google Places API
+                    let placeDetails: PlaceDetails | undefined;
+                    try {
+                        const searchQuery = location.area
+                            ? `${location.name}, ${location.area}, ${activeChat.destination}`
+                            : `${location.name}, ${activeChat.destination}`;
+                        console.log('[Add to Map] Fetching place details for query:', searchQuery);
+                        const placesResponse = await fetch('/api/google/places', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                query: searchQuery,
+                                location: coords,
+                            }),
+                        });
+                        console.log('[Add to Map] Places API response status:', placesResponse.status);
+                        if (placesResponse.ok) {
+                            const placesData = await placesResponse.json();
+                            console.log('[Add to Map] Places API response data:', JSON.stringify(placesData, null, 2));
+                            if (placesData.success && placesData.place) {
+                                placeDetails = {
+                                    placeId: placesData.place.placeId,
+                                    address: placesData.place.address,
+                                    rating: placesData.place.rating,
+                                    reviewCount: placesData.place.reviewCount,
+                                    photos: placesData.place.photos,
+                                    website: placesData.place.website,
+                                    phone: placesData.place.phone,
+                                    priceLevel: placesData.place.priceLevel,
+                                    openingHours: placesData.place.openingHours,
+                                };
+                                console.log('[Add to Map] Got place details with', placesData.place.photos?.length || 0, 'photos');
+                                console.log('[Add to Map] placeDetails object:', JSON.stringify(placeDetails, null, 2));
+                            } else {
+                                console.warn('[Add to Map] Places API returned no place data:', placesData);
+                            }
+                        } else {
+                            const errorText = await placesResponse.text();
+                            console.error('[Add to Map] Places API error response:', placesResponse.status, errorText);
+                        }
+                    } catch (placesError) {
+                        console.error('[Add to Map] Could not fetch place details:', placesError);
+                    }
+
                     addMapPin(activeChat.id, {
                         name: location.name,
                         type: location.type,
@@ -632,6 +676,7 @@ export default function ChatInterface() {
                         coordinates: coords,
                         sourceMessageIndex: messageIndex,
                         parentStopId, // Link to nearest itinerary stop
+                        placeDetails,
                     });
                     // Center the map on the newly added pin
                     updateMapView(activeChat.id, coords, 14);

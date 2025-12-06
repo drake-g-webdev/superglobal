@@ -3,12 +3,16 @@ import { NextRequest, NextResponse } from 'next/server';
 const GOOGLE_API_KEY = process.env.GOOGLE_MAPS_API_KEY;
 
 export async function POST(request: NextRequest) {
+  console.log('[Places API] Request received');
+
   if (!GOOGLE_API_KEY) {
+    console.error('[Places API] No Google Maps API key configured');
     return NextResponse.json({ error: 'Google Maps API key not configured' }, { status: 500 });
   }
 
   try {
     const { placeId, query, location } = await request.json();
+    console.log('[Places API] Params:', { placeId, query, location });
 
     // If we have a placeId, get place details
     if (placeId) {
@@ -49,6 +53,7 @@ export async function POST(request: NextRequest) {
 
     // Otherwise search for places by query
     if (query) {
+      console.log('[Places API] Searching for query:', query);
       const searchUrl = new URL('https://maps.googleapis.com/maps/api/place/textsearch/json');
       searchUrl.searchParams.set('query', query);
       if (location) {
@@ -57,12 +62,15 @@ export async function POST(request: NextRequest) {
       }
       searchUrl.searchParams.set('key', GOOGLE_API_KEY);
 
+      console.log('[Places API] Fetching from Google:', searchUrl.toString().replace(GOOGLE_API_KEY, 'API_KEY_HIDDEN'));
       const response = await fetch(searchUrl.toString());
       const data = await response.json();
+      console.log('[Places API] Google response status:', data.status, 'results count:', data.results?.length || 0);
 
       if (data.status === 'OK' && data.results?.length > 0) {
         const place = data.results[0];
-        return NextResponse.json({
+        console.log('[Places API] Found place:', place.name, 'photos:', place.photos?.length || 0);
+        const result = {
           success: true,
           place: {
             placeId: place.place_id,
@@ -77,10 +85,13 @@ export async function POST(request: NextRequest) {
               url: `https://maps.googleapis.com/maps/api/place/photo?maxwidth=400&photo_reference=${p.photo_reference}&key=${GOOGLE_API_KEY}`,
             })) || [],
           },
-        });
+        };
+        console.log('[Places API] Returning result with', result.place.photos.length, 'photos');
+        return NextResponse.json(result);
       }
 
-      return NextResponse.json({ success: false, error: data.status || 'No results found' });
+      console.warn('[Places API] No results found. Status:', data.status, 'Error:', data.error_message);
+      return NextResponse.json({ success: false, error: data.status || 'No results found', errorMessage: data.error_message });
     }
 
     return NextResponse.json({ error: 'Missing placeId or query' }, { status: 400 });

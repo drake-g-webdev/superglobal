@@ -932,11 +932,13 @@ export function ChatsProvider({ children }: { children: ReactNode }) {
 
   // Map pin management functions
   const addMapPin = (chatId: string, pin: Omit<MapPin, 'id' | 'createdAt'>) => {
+    console.log('[ChatsContext] addMapPin called with placeDetails:', pin.placeDetails ? JSON.stringify(pin.placeDetails, null, 2) : 'undefined');
     const newPin: MapPin = {
       ...pin,
       id: generatePinId(),
       createdAt: Date.now(),
     };
+    console.log('[ChatsContext] newPin created:', newPin.name, 'has placeDetails:', !!newPin.placeDetails);
     setChats(prev => prev.map(chat =>
       chat.id === chatId
         ? { ...chat, mapPins: [...chat.mapPins, newPin], updatedAt: Date.now() }

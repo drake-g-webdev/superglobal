@@ -376,6 +376,41 @@ export default function ChatInterface() {
         }
     }, [setExtractedItinerary]);
 
+    // Helper to try geocoding with multiple query variations
+    const tryGeocode = useCallback(async (location: string, destination: string): Promise<[number, number] | null> => {
+        // List of query variations to try
+        const variations = [
+            { place: location, context: destination },
+            { place: `${location}, ${destination}`, context: destination },
+            { place: location.replace(/\s+(Valley|Region|Area|District|Province)$/i, ''), context: destination },
+            { place: `${location} city`, context: destination },
+        ];
+
+        for (const query of variations) {
+            try {
+                const response = await fetch(`${API_URL}/api/geocode`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        place_name: query.place,
+                        context: query.context,
+                    }),
+                });
+
+                if (response.ok) {
+                    const data = await response.json();
+                    if (data.success && data.coordinates) {
+                        console.log('[Geocode] Success with query:', query.place);
+                        return data.coordinates as [number, number];
+                    }
+                }
+            } catch (e) {
+                console.warn('[Geocode] Failed attempt:', query.place, e);
+            }
+        }
+        return null;
+    }, []);
+
     // Add extracted itinerary to trip context and map
     const addItineraryToTrip = useCallback(async (messageIndex: number) => {
         if (!activeChat) return;
@@ -390,51 +425,98 @@ export default function ChatInterface() {
         });
 
         setAddedItineraryFromMessage(messageIndex);
-        console.log('[Add Itinerary] Added', extractedItinerary.stops.length, 'stops to trip');
+        console.log('[Add Itinerary] Adding', extractedItinerary.stops.length, 'stops to trip');
 
         // Also add each stop to the map as a city pin
         const destination = activeChat.destination || 'World';
         let firstCoords: [number, number] | null = null;
+        const failedStops: typeof extractedItinerary.stops = [];
+        const addedPinNames = new Set(activeChat.mapPins.map(pin => pin.name.toLowerCase()));
 
+        // First pass: try to geocode all stops
         for (const stop of extractedItinerary.stops) {
-            // Skip if already on map
             const nameLower = stop.location.toLowerCase();
-            if (activeChat.mapPins.some(pin => pin.name.toLowerCase() === nameLower)) {
+            if (addedPinNames.has(nameLower)) {
                 console.log('[Add Itinerary] Stop already on map:', stop.location);
                 continue;
             }
 
-            try {
-                const geocodeResponse = await fetch(`${API_URL}/api/geocode`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        place_name: stop.location,
-                        context: destination,
-                    }),
+            const coords = await tryGeocode(stop.location, destination);
+            if (coords) {
+                addMapPin(activeChat.id, {
+                    name: stop.location,
+                    type: 'city',
+                    description: stop.notes || `${stop.days} days`,
+                    coordinates: coords,
+                    sourceMessageIndex: messageIndex,
                 });
+                addedPinNames.add(nameLower);
+                console.log('[Add Itinerary] Added to map:', stop.location, coords);
 
-                if (geocodeResponse.ok) {
-                    const geocodeData = await geocodeResponse.json();
-                    if (geocodeData.success && geocodeData.coordinates) {
-                        const coords = geocodeData.coordinates as [number, number];
-                        addMapPin(activeChat.id, {
-                            name: stop.location,
-                            type: 'city',
-                            description: stop.notes || `${stop.days} days`,
-                            coordinates: coords,
-                            sourceMessageIndex: messageIndex,
+                if (!firstCoords) {
+                    firstCoords = coords;
+                }
+            } else {
+                console.warn('[Add Itinerary] First pass failed for:', stop.location);
+                failedStops.push(stop);
+            }
+        }
+
+        // Second pass: retry failed stops with more aggressive variations
+        if (failedStops.length > 0) {
+            console.log('[Add Itinerary] Retrying', failedStops.length, 'failed stops');
+
+            for (const stop of failedStops) {
+                // Try with just the first word (often the main city name)
+                const firstWord = stop.location.split(/[\s,\-\/]+/)[0];
+                const words = stop.location.split(/[\s,\-\/]+/);
+
+                const retryQueries = [
+                    `${stop.location} ${destination}`,
+                    firstWord.length > 3 ? firstWord : stop.location,
+                    words.length > 1 ? words.slice(0, 2).join(' ') : stop.location,
+                ];
+
+                let found = false;
+                for (const query of retryQueries) {
+                    try {
+                        const response = await fetch(`${API_URL}/api/geocode`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                place_name: query,
+                                context: destination,
+                            }),
                         });
-                        console.log('[Add Itinerary] Added to map:', stop.location, coords);
 
-                        // Save first coordinates to center map
-                        if (!firstCoords) {
-                            firstCoords = coords;
+                        if (response.ok) {
+                            const data = await response.json();
+                            if (data.success && data.coordinates) {
+                                const coords = data.coordinates as [number, number];
+                                addMapPin(activeChat.id, {
+                                    name: stop.location,
+                                    type: 'city',
+                                    description: stop.notes || `${stop.days} days`,
+                                    coordinates: coords,
+                                    sourceMessageIndex: messageIndex,
+                                });
+                                console.log('[Add Itinerary] Retry success for:', stop.location, 'using query:', query);
+
+                                if (!firstCoords) {
+                                    firstCoords = coords;
+                                }
+                                found = true;
+                                break;
+                            }
                         }
+                    } catch (e) {
+                        console.warn('[Add Itinerary] Retry failed:', query, e);
                     }
                 }
-            } catch (e) {
-                console.error('[Add Itinerary] Failed to geocode:', stop.location, e);
+
+                if (!found) {
+                    console.error('[Add Itinerary] Could not geocode after retries:', stop.location);
+                }
             }
         }
 
@@ -442,7 +524,9 @@ export default function ChatInterface() {
         if (firstCoords) {
             updateMapView(activeChat.id, firstCoords, 6); // Zoom out to see the route
         }
-    }, [activeChat, updateTripContext, addMapPin, updateMapView]);
+
+        console.log('[Add Itinerary] Complete. Total stops:', extractedItinerary.stops.length, 'Failed:', failedStops.length);
+    }, [activeChat, updateTripContext, addMapPin, updateMapView, tryGeocode]);
 
     // No auto-extraction effect - we trigger extraction directly after receiving a response
 

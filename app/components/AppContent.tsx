@@ -4,7 +4,6 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import ChatInterface from './ChatInterface';
-import LanguageSelector from './LanguageSelector';
 import ProfileDropdown from './ProfileDropdown';
 import ProfilePanel from './ProfilePanel';
 import { useAuth } from '../context/AuthContext';
@@ -52,9 +51,8 @@ export default function AppContent() {
           superglobal.travel
         </Link>
 
-        {/* Right side - Language selector and Profile dropdown */}
+        {/* Right side - Profile dropdown */}
         <div className="flex items-center gap-3">
-          <LanguageSelector />
           <ProfileDropdown onOpenProfile={() => setIsProfileOpen(true)} />
         </div>
       </div>

@@ -627,6 +627,7 @@ export function ChatsProvider({ children }: { children: ReactNode }) {
           itineraryStops: chat.tripContext.itineraryBreakdown,
           costItems: chat.tripCosts.items,
           mapPins: chat.mapPins,
+          routeSegments: chat.routeSegments,
           bucketListItems: chat.bucketList,
           packingItems: chat.packingList.items,
           touristTraps: chat.touristTraps,

@@ -748,13 +748,13 @@ export default function MapPanel({ isExpanded, onToggle }: MapPanelProps) {
                     <button
                       onClick={optimizeRoute}
                       disabled={optimizing}
-                      className="p-1.5 rounded bg-white hover:bg-stone-100 transition-colors disabled:opacity-50 flex-shrink-0"
+                      className="p-1.5 rounded bg-stone-200 hover:bg-stone-300 transition-colors disabled:opacity-50 flex-shrink-0"
                       title="Optimize route order (AI)"
                     >
                       {optimizing ? (
-                        <Loader2 size={14} className="animate-spin text-orange-500" />
+                        <Loader2 size={16} className="animate-spin text-orange-600" strokeWidth={2.5} />
                       ) : (
-                        <Brain size={14} className="text-orange-500" />
+                        <Brain size={16} className="text-orange-600" strokeWidth={2.5} />
                       )}
                     </button>
                   )}

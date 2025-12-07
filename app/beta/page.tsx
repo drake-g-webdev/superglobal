@@ -2,18 +2,40 @@
 
 import Link from 'next/link';
 import { Globe, ArrowLeft, Video, MessageCircle, Users, Sparkles } from 'lucide-react';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
+
+declare global {
+  interface Window {
+    Cal?: (action: string, ...args: unknown[]) => void;
+  }
+}
 
 export default function BetaPage() {
+  const [calLoaded, setCalLoaded] = useState(false);
+
   useEffect(() => {
     // Load Cal.com embed script
     const script = document.createElement('script');
     script.src = 'https://app.cal.com/embed/embed.js';
     script.async = true;
+
+    script.onload = () => {
+      // Initialize Cal.com inline embed
+      if (window.Cal) {
+        window.Cal("inline", {
+          elementOrSelector: "#cal-embed",
+          calLink: "drake-superglobal/onboarding-jam",
+          config: {
+            theme: "dark",
+          }
+        });
+        setCalLoaded(true);
+      }
+    };
+
     document.body.appendChild(script);
 
     return () => {
-      // Cleanup
       const existingScript = document.querySelector('script[src="https://app.cal.com/embed/embed.js"]');
       if (existingScript) {
         existingScript.remove();
@@ -90,12 +112,14 @@ export default function BetaPage() {
         <div className="bg-stone-800/30 border border-stone-700 rounded-xl p-6 md:p-8">
           <h2 className="text-2xl font-bold text-center mb-6">Schedule Your Call</h2>
 
-          {/* Cal.com inline embed - replace YOUR_USERNAME and EVENT_TYPE */}
-          <div
-            data-cal-link="drake-superglobal/onboarding-jam"
-            data-cal-config='{"theme":"dark"}'
-            className="w-full min-h-[600px]"
-          />
+          {/* Cal.com inline embed */}
+          <div id="cal-embed" className="w-full min-h-[600px] relative">
+            {!calLoaded && (
+              <div className="absolute inset-0 flex items-center justify-center">
+                <div className="text-stone-400">Loading scheduler...</div>
+              </div>
+            )}
+          </div>
 
           <p className="text-center text-stone-500 text-sm mt-6">
             Powered by Cal.com - We&apos;ll send a confirmation to your email

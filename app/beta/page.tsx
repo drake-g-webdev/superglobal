@@ -95,7 +95,7 @@ export default function BetaPage() {
           </h1>
           <p className="text-xl text-stone-300 mb-8 max-w-2xl mx-auto">
             We&apos;re looking for travelers to help shape the future of trip planning.
-            Book a quick WhatsApp video call to get early access and share your feedback.
+            Book a quick video call to get early access and share your feedback.
           </p>
         </div>
       </div>
@@ -107,9 +107,9 @@ export default function BetaPage() {
             <div className="w-12 h-12 bg-orange-600/20 rounded-lg flex items-center justify-center mb-4 mx-auto">
               <Video className="text-orange-500" size={24} />
             </div>
-            <h3 className="font-semibold mb-2">15-min Video Call</h3>
+            <h3 className="font-semibold mb-2">30-min Video Call</h3>
             <p className="text-stone-400 text-sm">
-              Quick intro via WhatsApp to discuss your travel style and needs
+              Quick intro via Google Meet to discuss your travel style and needs
             </p>
           </div>
 
@@ -157,7 +157,7 @@ export default function BetaPage() {
           <p className="text-sm">
             Having trouble with the scheduler?{' '}
             <a
-              href="mailto:drake@superglobal.travel?subject=Beta Tester Interest&body=Hi! I'm interested in becoming a beta tester for Superglobal.%0A%0AMy name: %0AMy WhatsApp number: %0APreferred time: %0ANotes: "
+              href="mailto:drake@superglobal.travel?subject=Beta Tester Interest&body=Hi! I'm interested in becoming a beta tester for Superglobal.%0A%0AMy name: %0AMy email: %0APreferred time: %0ANotes: "
               className="text-orange-400 hover:text-orange-300 underline"
             >
               Email us directly

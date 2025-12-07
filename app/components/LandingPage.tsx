@@ -1,7 +1,7 @@
 "use client";
 
 import Link from 'next/link';
-import { Globe, MapPin, DollarSign, MessageSquare, Backpack, ArrowRight } from 'lucide-react';
+import { Globe, MapPin, DollarSign, MessageSquare, Backpack, ArrowRight, Sparkles } from 'lucide-react';
 
 export default function LandingPage() {
   return (
@@ -19,6 +19,13 @@ export default function LandingPage() {
           </div>
           {/* Hide nav buttons on mobile - hero CTA buttons are visible */}
           <div className="hidden md:flex items-center gap-4">
+            <Link
+              href="/beta"
+              className="flex items-center gap-1.5 text-orange-400 hover:text-orange-300 transition-colors"
+            >
+              <Sparkles size={16} />
+              Join Beta
+            </Link>
             <Link
               href="/auth/login"
               className="text-stone-300 hover:text-white transition-colors"
@@ -138,19 +145,32 @@ export default function LandingPage() {
         </div>
       </div>
 
-      {/* CTA Section */}
+      {/* Beta CTA Section */}
       <div className="bg-gradient-to-r from-orange-600/20 to-orange-500/10 border-y border-orange-500/20">
         <div className="max-w-4xl mx-auto px-6 py-16 text-center">
-          <h2 className="text-3xl font-bold mb-4">Ready for your next adventure?</h2>
+          <div className="inline-flex items-center gap-2 bg-stone-800/50 border border-orange-500/30 rounded-full px-4 py-2 mb-6">
+            <Sparkles size={16} className="text-orange-400" />
+            <span className="text-orange-300 text-sm font-medium">Now accepting beta testers</span>
+          </div>
+          <h2 className="text-3xl font-bold mb-4">Want early access?</h2>
           <p className="text-stone-300 mb-8 text-lg">
-            Plan smarter.{' '}<span className="font-mono font-bold text-lg bg-stone-100 text-stone-900 px-2 py-1 rounded ml-2">superglobal.travel</span>
+            Join our beta program and help shape the future of travel planning.
           </p>
-          <Link
-            href="/auth/signup"
-            className="inline-flex items-center gap-2 bg-orange-600 hover:bg-orange-700 text-white px-8 py-4 rounded-xl font-semibold text-lg transition-colors"
-          >
-            Embark... <ArrowRight size={20} />
-          </Link>
+          <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
+            <Link
+              href="/beta"
+              className="inline-flex items-center gap-2 bg-orange-600 hover:bg-orange-700 text-white px-8 py-4 rounded-xl font-semibold text-lg transition-colors"
+            >
+              <Sparkles size={20} />
+              Schedule a Call
+            </Link>
+            <Link
+              href="/auth/signup"
+              className="inline-flex items-center gap-2 text-stone-300 hover:text-white px-8 py-4 rounded-xl font-medium text-lg transition-colors border border-stone-700 hover:border-stone-600"
+            >
+              Or sign up now <ArrowRight size={20} />
+            </Link>
+          </div>
         </div>
       </div>
 

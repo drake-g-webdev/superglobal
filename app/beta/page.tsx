@@ -4,43 +4,69 @@ import Link from 'next/link';
 import { Globe, ArrowLeft, Video, MessageCircle, Users, Sparkles } from 'lucide-react';
 import { useEffect, useState } from 'react';
 
-declare global {
-  interface Window {
-    Cal?: (action: string, ...args: unknown[]) => void;
-  }
-}
-
 export default function BetaPage() {
   const [calLoaded, setCalLoaded] = useState(false);
 
   useEffect(() => {
-    // Load Cal.com embed script
-    const script = document.createElement('script');
-    script.src = 'https://app.cal.com/embed/embed.js';
-    script.async = true;
-
-    script.onload = () => {
-      // Initialize Cal.com inline embed
-      if (window.Cal) {
-        window.Cal("inline", {
-          elementOrSelector: "#cal-embed",
-          calLink: "drake-superglobal/onboarding-jam",
-          config: {
-            theme: "dark",
+    // Cal.com embed loader snippet (from their official docs)
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (function (C: any, A: string, L: string) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const p = function (a: any, ar: any) {
+        a.q.push(ar);
+      };
+      const d = C.document;
+      C.Cal =
+        C.Cal ||
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        function (...args: any[]) {
+          const cal = C.Cal;
+          if (!cal.loaded) {
+            cal.ns = {};
+            cal.q = cal.q || [];
+            d.head.appendChild(d.createElement("script")).src = A;
+            cal.loaded = true;
           }
-        });
-        setCalLoaded(true);
-      }
-    };
+          if (args[0] === L) {
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const api: any = function (...apiArgs: any[]) {
+              p(api, apiArgs);
+            };
+            const namespace = args[1];
+            api.q = api.q || [];
+            if (typeof namespace === "string") {
+              cal.ns[namespace] = cal.ns[namespace] || api;
+              p(cal.ns[namespace], args);
+              p(cal, ["initNamespace", namespace]);
+            } else p(cal, args);
+            return;
+          }
+          p(cal, args);
+        };
+    })(window, "https://app.cal.com/embed/embed.js", "init");
 
-    document.body.appendChild(script);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (window as any).Cal("init", { origin: "https://cal.com" });
 
-    return () => {
-      const existingScript = document.querySelector('script[src="https://app.cal.com/embed/embed.js"]');
-      if (existingScript) {
-        existingScript.remove();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (window as any).Cal("inline", {
+      elementOrSelector: "#cal-embed",
+      calLink: "drake-superglobal/onboarding-jam",
+      layout: "month_view",
+      config: {
+        theme: "dark",
       }
-    };
+    });
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (window as any).Cal("ui", {
+      theme: "dark",
+      styles: { branding: { brandColor: "#ea580c" } },
+      hideEventTypeDetails: false,
+      layout: "month_view",
+    });
+
+    setCalLoaded(true);
   }, []);
 
   return (

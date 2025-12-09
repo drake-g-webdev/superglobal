@@ -1,12 +1,13 @@
 "use client";
 
 import { useState, useEffect } from 'react';
-import { X, Plus, Calendar, DollarSign, Compass, ChevronLeft, ChevronRight, Check, Trash2, Users, Minus, GripVertical } from 'lucide-react';
+import { X, Plus, Calendar, DollarSign, Compass, ChevronLeft, ChevronRight, Check, Trash2, Users, Minus, GripVertical, Loader2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import clsx from 'clsx';
 import { useChats, TripContext, TransportationStyle, AccommodationStyle, TripGoal, ItineraryStop } from '../context/ChatsContext';
 import { useProfile } from '../context/ProfileContext';
 import { useTranslations } from '../context/LocaleContext';
+import { API_URL } from '../config/api';
 
 // Country list for autocomplete
 const COUNTRIES = [
@@ -114,7 +115,7 @@ function ToggleChip({ selected, onClick, children }: { selected: boolean; onClic
 }
 
 export default function TripSetupWizard({ isOpen, onClose, chatId }: TripSetupWizardProps) {
-  const { activeChat, updateTripContext, markTripSetupComplete, updateChat } = useChats();
+  const { activeChat, updateTripContext, markTripSetupComplete, updateChat, addMapPin, updateMapView } = useChats();
   const { profile } = useProfile();
   const t = useTranslations('tripSetup');
   const tGoals = useTranslations('tripGoals');
@@ -144,6 +145,7 @@ export default function TripSetupWizard({ isOpen, onClose, chatId }: TripSetupWi
   const [customGoals, setCustomGoals] = useState<string[]>([]);
   const [newCustomGoal, setNewCustomGoal] = useState('');
   const [travelerCount, setTravelerCount] = useState(1);
+  const [isSaving, setIsSaving] = useState(false);
 
   // Map profile travel style to default traveler count
   const getDefaultTravelerCount = () => {
@@ -258,7 +260,9 @@ export default function TripSetupWizard({ isOpen, onClose, chatId }: TripSetupWi
   // Check if destination is a valid country
   const isValidCountry = COUNTRIES.includes(destination);
 
-  const handleSave = () => {
+  const handleSave = async () => {
+    setIsSaving(true);
+
     // Update chat destination (must be a valid country)
     updateChat(chatId, { destination: destination });
 
@@ -276,7 +280,65 @@ export default function TripSetupWizard({ isOpen, onClose, chatId }: TripSetupWi
       travelerCount,
     });
 
+    // Geocode each itinerary stop and add to map
+    if (itinerary.length > 0) {
+      let firstCoords: [number, number] | null = null;
+
+      for (let i = 0; i < itinerary.length; i++) {
+        const stop = itinerary[i];
+        try {
+          console.log(`[TripSetup] Geocoding itinerary stop ${i + 1}:`, stop.location);
+          const geocodeResponse = await fetch(`${API_URL}/api/geocode`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              place_name: stop.location,
+              context: destination,
+            }),
+          });
+
+          if (geocodeResponse.ok) {
+            const geocodeData = await geocodeResponse.json();
+            if (geocodeData.success && geocodeData.coordinates) {
+              const coords = geocodeData.coordinates as [number, number];
+              console.log(`[TripSetup] Got coordinates for ${stop.location}:`, coords);
+
+              // Store first coordinates for centering map
+              if (!firstCoords) {
+                firstCoords = coords;
+              }
+
+              // Add as itinerary stop pin
+              addMapPin(chatId, {
+                name: stop.location,
+                type: 'city',
+                description: stop.notes || `${stop.days} days`,
+                coordinates: coords,
+                sourceMessageIndex: -1, // -1 indicates from trip setup, not chat
+                isItineraryStop: true,
+                itineraryOrder: i,
+                days: stop.days,
+                notes: stop.notes,
+              });
+            } else {
+              console.warn(`[TripSetup] Could not geocode ${stop.location}:`, geocodeData);
+            }
+          } else {
+            console.error(`[TripSetup] Geocode API error for ${stop.location}:`, geocodeResponse.status);
+          }
+        } catch (error) {
+          console.error(`[TripSetup] Error geocoding ${stop.location}:`, error);
+        }
+      }
+
+      // Center map on first itinerary stop
+      if (firstCoords) {
+        updateMapView(chatId, firstCoords, 6); // Zoom out to see multiple stops
+      }
+    }
+
     markTripSetupComplete(chatId);
+    setIsSaving(false);
     onClose();
   };
 
@@ -722,12 +784,19 @@ export default function TripSetupWizard({ isOpen, onClose, chatId }: TripSetupWi
               <button
                 type="button"
                 onClick={handleNext}
-                className="flex items-center gap-2 bg-orange-600 hover:bg-orange-500 px-6 py-2 rounded-lg text-sm font-medium transition-colors"
+                disabled={isSaving}
+                className="flex items-center gap-2 bg-orange-600 hover:bg-orange-500 disabled:bg-orange-600/50 px-6 py-2 rounded-lg text-sm font-medium transition-colors"
               >
                 {step === totalSteps - 1 ? (
-                  <>
-                    <Check size={16} /> {t('saveTrip')}
-                  </>
+                  isSaving ? (
+                    <>
+                      <Loader2 size={16} className="animate-spin" /> Saving...
+                    </>
+                  ) : (
+                    <>
+                      <Check size={16} /> {t('saveTrip')}
+                    </>
+                  )
                 ) : (
                   <>
                     {tCommon('next')} <ChevronRight size={16} />

@@ -16,10 +16,12 @@ export default function AppContent() {
 
   // Redirect to landing page if not authenticated (after loading completes)
   useEffect(() => {
+    console.log('[AppContent] Auth state check:', { isLoading, isAuthenticated, profileComplete });
     if (!isLoading && !isAuthenticated) {
+      console.log('[AppContent] Not authenticated, redirecting to landing page');
       router.push('/');
     }
-  }, [isLoading, isAuthenticated, router]);
+  }, [isLoading, isAuthenticated, profileComplete, router]);
 
   // Show loading spinner while checking auth
   if (isLoading) {

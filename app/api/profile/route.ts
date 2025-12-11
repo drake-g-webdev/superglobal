@@ -28,11 +28,15 @@ export async function GET() {
 export async function POST(request: NextRequest) {
   try {
     const session = await getServerSession(authOptions);
+    console.log('[Profile API] POST request, session:', session?.user?.id ? 'authenticated' : 'unauthenticated');
+
     if (!session?.user?.id) {
+      console.log('[Profile API] Unauthorized - no session user id');
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
     const data = await request.json();
+    console.log('[Profile API] Saving profile for user:', session.user.id);
 
     const profile = await prisma.profile.upsert({
       where: { userId: session.user.id },
@@ -113,8 +117,10 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json(profile);
   } catch (error) {
-    console.error('Error saving profile:', error);
-    return NextResponse.json({ error: 'Failed to save profile' }, { status: 500 });
+    console.error('[Profile API] Error saving profile:', error);
+    // Include more error details in response for debugging
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    return NextResponse.json({ error: 'Failed to save profile', details: errorMessage }, { status: 500 });
   }
 }
 

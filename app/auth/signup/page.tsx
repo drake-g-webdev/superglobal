@@ -193,28 +193,64 @@ export default function SignupPage() {
       // Save profile data to local state
       updateProfile(fullProfileData);
 
-      // Sync profile to database immediately (don't wait for debounce)
-      await fetch('/api/profile', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          name,
-          countryOfOrigin,
-          passportCountry,
-          budgetStyle: budgetPreference,
-          riskTolerance,
-          comfortThreshold: [comfortThreshold],
-          travelPace,
-          foodPreference,
-        }),
-      });
+      // Small delay to ensure session cookies are fully propagated
+      await new Promise(resolve => setTimeout(resolve, 500));
+
+      // Sync profile to database with retry logic
+      const profileData = {
+        name,
+        countryOfOrigin,
+        passportCountry,
+        budgetStyle: budgetPreference,
+        riskTolerance,
+        comfortThreshold: [comfortThreshold],
+        travelPace,
+        foodPreference,
+      };
+
+      let profileSaved = false;
+      for (let attempt = 0; attempt < 3 && !profileSaved; attempt++) {
+        try {
+          const profileRes = await fetch('/api/profile', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(profileData),
+          });
+
+          if (profileRes.ok) {
+            profileSaved = true;
+            console.log('[Signup] Profile saved successfully');
+          } else {
+            console.warn(`[Signup] Profile save attempt ${attempt + 1} failed:`, profileRes.status);
+            if (attempt < 2) {
+              await new Promise(resolve => setTimeout(resolve, 500));
+            }
+          }
+        } catch (fetchErr) {
+          console.warn(`[Signup] Profile save attempt ${attempt + 1} error:`, fetchErr);
+          if (attempt < 2) {
+            await new Promise(resolve => setTimeout(resolve, 500));
+          }
+        }
+      }
+
+      if (!profileSaved) {
+        console.warn('[Signup] Could not save profile to database, will sync later');
+      }
 
       // Mark profile as complete
+      console.log('[Signup] Marking profile as complete...');
       await markProfileComplete();
 
+      // Give the session a moment to fully update before navigation
+      console.log('[Signup] Waiting for session to stabilize...');
+      await new Promise(resolve => setTimeout(resolve, 300));
+
       // Redirect to main app
+      console.log('[Signup] Redirecting to /app...');
       router.push('/app');
     } catch (err) {
+      console.error('[Signup] Unexpected error:', err);
       setError('An unexpected error occurred');
     } finally {
       setIsLoading(false);

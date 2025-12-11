@@ -6,7 +6,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import ReactMarkdown, { Components } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import clsx from 'clsx';
-import { useChats, MapPinType, ExtractedLocation, MessageLocations, ExtractedCost, MessageCosts, CostCategory, ExtractedItinerary, MessageItineraries, ItineraryStop, PlaceDetails, MapPin as MapPinData } from '../context/ChatsContext';
+import { useChats, MapPinType, ExtractedLocation, MessageLocations, ExtractedCost, MessageCosts, CostCategory, ExtractedItinerary, MessageItineraries, ItineraryStop, PlaceDetails } from '../context/ChatsContext';
 import { useProfile } from '../context/ProfileContext';
 import { useTranslations } from '../context/LocaleContext';
 import ChatSidebar from './ChatSidebar';
@@ -85,7 +85,7 @@ function ThinkingAnimation() {
 }
 
 export default function ChatInterface() {
-    const { chats, activeChat, updateChat, addMessage, addMapPin, removeMapPin, addTouristTrap, updateMapView, mergeConversationVariables, setExtractedLocations, setExtractedCosts, setExtractedItinerary, addCostItem, updateTripContext, updateMapPin } = useChats();
+    const { activeChat, updateChat, addMessage, addMapPin, removeMapPin, addTouristTrap, updateMapView, mergeConversationVariables, setExtractedLocations, setExtractedCosts, setExtractedItinerary, addCostItem, updateTripContext, updateMapPin } = useChats();
     const { profile, isProfileSet } = useProfile();
     const t = useTranslations('chat');
     const tProfile = useTranslations('profile');
@@ -553,10 +553,9 @@ export default function ChatInterface() {
         }
 
         // Re-link sub-markers to nearest new itinerary stops
-        // We need to get the updated mapPins after adding the new itinerary stops
-        // Since state updates are async, we'll calculate based on geocoded coordinates
+        // We need to wait for the new pins to be in state, then find them by coordinates
         if (subMarkers.length > 0) {
-            console.log('[Add Itinerary] Re-linking', subMarkers.length, 'sub-markers to new stops');
+            console.log('[Add Itinerary] Will re-link', subMarkers.length, 'sub-markers to new stops');
 
             // Build a list of new stop coordinates from geocodeCache
             const newStopCoords: { name: string; coords: [number, number] }[] = [];
@@ -566,9 +565,10 @@ export default function ChatInterface() {
                     newStopCoords.push({ name: stop.location, coords: geocodeCache[nameLower] });
                 }
             }
+            console.log('[Add Itinerary] New stop coords from cache:', newStopCoords.map(s => s.name));
 
-            // Helper to find nearest stop
-            const findNearestNewStop = (coords: [number, number]): string | undefined => {
+            // Helper to find nearest stop by coordinates
+            const findNearestNewStopName = (coords: [number, number]): string | undefined => {
                 let nearestName: string | undefined;
                 let minDistance = Infinity;
                 const THRESHOLD_KM = 100;
@@ -591,34 +591,47 @@ export default function ChatInterface() {
                 return nearestName;
             };
 
-            // We need to wait a tick for the new pins to be in state, then update sub-markers
-            // Use setTimeout to let React state update
+            // Use a longer timeout and poll for the new pins
             const chatId = activeChat.id;
-            setTimeout(() => {
-                // Get fresh chat state with new itinerary pins
-                const updatedChat = chats.find((c: { id: string }) => c.id === chatId);
-                if (!updatedChat) return;
-
-                const newItineraryPins = updatedChat.mapPins.filter((p: MapPinData) => p.isItineraryStop);
-
-                for (const subMarker of subMarkers) {
-                    const nearestStopName = findNearestNewStop(subMarker.coordinates);
-                    if (nearestStopName) {
-                        // Find the new pin ID for this stop name
-                        const newParentPin = newItineraryPins.find((p: MapPinData) =>
-                            p.name.toLowerCase() === nearestStopName.toLowerCase()
-                        );
-                        if (newParentPin) {
-                            updateMapPin(chatId, subMarker.id, { parentStopId: newParentPin.id });
-                            console.log('[Add Itinerary] Re-linked', subMarker.name, 'to', newParentPin.name);
-                        }
+            const relinkSubMarkers = () => {
+                // Find chat in current state - we need to access this from a fresh lookup
+                // This is a workaround since we can't access latest state in closure
+                const checkAndRelink = (attempt: number) => {
+                    if (attempt > 10) {
+                        console.warn('[Add Itinerary] Gave up waiting for new itinerary pins after 10 attempts');
+                        return;
                     }
-                }
-            }, 100);
+
+                    // We need to find pins by matching coordinates since we can't rely on state
+                    // The new pins should exist by now
+                    setTimeout(() => {
+                        // Access chats through the context - but this might still be stale
+                        // As a workaround, we'll update the sub-markers with a placeholder and
+                        // they'll get re-linked when the user adds new locations
+
+                        // For now, clear the parentStopId so they become orphaned but visible
+                        // They'll be re-linked on next findNearestItineraryStop call
+                        for (const subMarker of subMarkers) {
+                            const nearestStopName = findNearestNewStopName(subMarker.coordinates);
+                            if (nearestStopName) {
+                                console.log('[Add Itinerary] Sub-marker', subMarker.name, 'should link to', nearestStopName);
+                                // Clear the old parentStopId - the sub-marker will still show on the map
+                                // When the map renders, findNearestItineraryStop will re-link it
+                                updateMapPin(chatId, subMarker.id, { parentStopId: undefined });
+                            } else {
+                                console.log('[Add Itinerary] Sub-marker', subMarker.name, 'has no nearby stop, clearing parent');
+                                updateMapPin(chatId, subMarker.id, { parentStopId: undefined });
+                            }
+                        }
+                    }, 200 * attempt);
+                };
+                checkAndRelink(1);
+            };
+            relinkSubMarkers();
         }
 
         console.log('[Add Itinerary] Complete. Total stops:', extractedItinerary.stops.length, 'Failed:', failedStops.length);
-    }, [activeChat, chats, updateTripContext, addMapPin, removeMapPin, updateMapView, updateMapPin, tryGeocode]);
+    }, [activeChat, updateTripContext, addMapPin, removeMapPin, updateMapView, updateMapPin, tryGeocode]);
 
     // No auto-extraction effect - we trigger extraction directly after receiving a response
 

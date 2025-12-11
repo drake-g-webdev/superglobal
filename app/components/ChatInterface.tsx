@@ -439,12 +439,11 @@ export default function ChatInterface() {
 
         console.log('[Add Itinerary] Adding', extractedItinerary.stops.length, 'stops to trip');
 
-        // Also add each stop to the map as a city pin with itinerary metadata
-        // Note: We do NOT filter by name because itineraries can have the same city multiple times
-        // (e.g., starting and ending in the same city)
         const destination = activeChat.destination || 'World';
         let firstCoords: [number, number] | null = null;
         const failedStops: { stop: typeof extractedItinerary.stops[0]; index: number }[] = [];
+        // Track new stop IDs and coordinates for re-linking sub-markers
+        const newStopData: { name: string; coords: [number, number]; pinId: string }[] = [];
         // Cache geocoded coordinates by name to avoid redundant API calls for same location
         const geocodeCache: Record<string, [number, number]> = {};
 
@@ -463,7 +462,7 @@ export default function ChatInterface() {
             }
 
             if (coords) {
-                addMapPin(activeChat.id, {
+                const pinId = addMapPin(activeChat.id, {
                     name: stop.location,
                     type: 'city',
                     description: stop.notes || `${stop.days} days`,
@@ -474,7 +473,9 @@ export default function ChatInterface() {
                     days: stop.days,
                     notes: stop.notes,
                 });
-                console.log('[Add Itinerary] Added to map:', stop.location, 'at order', i, coords);
+                // Track the new pin for re-linking sub-markers
+                newStopData.push({ name: stop.location, coords, pinId });
+                console.log('[Add Itinerary] Added to map:', stop.location, 'pinId:', pinId, 'at order', i, coords);
 
                 if (!firstCoords) {
                     firstCoords = coords;
@@ -490,7 +491,6 @@ export default function ChatInterface() {
             console.log('[Add Itinerary] Retrying', failedStops.length, 'failed stops');
 
             for (const { stop, index } of failedStops) {
-                // Try with just the first word (often the main city name)
                 const firstWord = stop.location.split(/[\s,\-\/]+/)[0];
                 const words = stop.location.split(/[\s,\-\/]+/);
 
@@ -516,7 +516,7 @@ export default function ChatInterface() {
                             const data = await response.json();
                             if (data.success && data.coordinates) {
                                 const coords = data.coordinates as [number, number];
-                                addMapPin(activeChat.id, {
+                                const pinId = addMapPin(activeChat.id, {
                                     name: stop.location,
                                     type: 'city',
                                     description: stop.notes || `${stop.days} days`,
@@ -527,7 +527,9 @@ export default function ChatInterface() {
                                     days: stop.days,
                                     notes: stop.notes,
                                 });
-                                console.log('[Add Itinerary] Retry success for:', stop.location, 'using query:', query);
+                                // Track the new pin for re-linking sub-markers
+                                newStopData.push({ name: stop.location, coords, pinId });
+                                console.log('[Add Itinerary] Retry success for:', stop.location, 'pinId:', pinId);
 
                                 if (!firstCoords) {
                                     firstCoords = coords;
@@ -552,28 +554,17 @@ export default function ChatInterface() {
             updateMapView(activeChat.id, firstCoords, 6); // Zoom out to see the route
         }
 
-        // Re-link sub-markers to nearest new itinerary stops
-        // We need to wait for the new pins to be in state, then find them by coordinates
-        if (subMarkers.length > 0) {
-            console.log('[Add Itinerary] Will re-link', subMarkers.length, 'sub-markers to new stops');
+        // Re-link sub-markers to nearest new itinerary stops using the pin IDs we just created
+        if (subMarkers.length > 0 && newStopData.length > 0) {
+            console.log('[Add Itinerary] Re-linking', subMarkers.length, 'sub-markers to', newStopData.length, 'new stops');
 
-            // Build a list of new stop coordinates from geocodeCache
-            const newStopCoords: { name: string; coords: [number, number] }[] = [];
-            for (const stop of extractedItinerary.stops) {
-                const nameLower = stop.location.toLowerCase();
-                if (geocodeCache[nameLower]) {
-                    newStopCoords.push({ name: stop.location, coords: geocodeCache[nameLower] });
-                }
-            }
-            console.log('[Add Itinerary] New stop coords from cache:', newStopCoords.map(s => s.name));
-
-            // Helper to find nearest stop by coordinates
-            const findNearestNewStopName = (coords: [number, number]): string | undefined => {
-                let nearestName: string | undefined;
+            // Helper to find nearest stop and return its pin ID
+            const findNearestNewStopId = (coords: [number, number]): string | undefined => {
+                let nearestPinId: string | undefined;
                 let minDistance = Infinity;
                 const THRESHOLD_KM = 100;
 
-                for (const stop of newStopCoords) {
+                for (const stop of newStopData) {
                     const R = 6371;
                     const dLat = (stop.coords[1] - coords[1]) * Math.PI / 180;
                     const dLon = (stop.coords[0] - coords[0]) * Math.PI / 180;
@@ -585,49 +576,24 @@ export default function ChatInterface() {
 
                     if (distance < minDistance && distance < THRESHOLD_KM) {
                         minDistance = distance;
-                        nearestName = stop.name;
+                        nearestPinId = stop.pinId;
                     }
                 }
-                return nearestName;
+                return nearestPinId;
             };
 
-            // Use a longer timeout and poll for the new pins
-            const chatId = activeChat.id;
-            const relinkSubMarkers = () => {
-                // Find chat in current state - we need to access this from a fresh lookup
-                // This is a workaround since we can't access latest state in closure
-                const checkAndRelink = (attempt: number) => {
-                    if (attempt > 10) {
-                        console.warn('[Add Itinerary] Gave up waiting for new itinerary pins after 10 attempts');
-                        return;
-                    }
-
-                    // We need to find pins by matching coordinates since we can't rely on state
-                    // The new pins should exist by now
-                    setTimeout(() => {
-                        // Access chats through the context - but this might still be stale
-                        // As a workaround, we'll update the sub-markers with a placeholder and
-                        // they'll get re-linked when the user adds new locations
-
-                        // For now, clear the parentStopId so they become orphaned but visible
-                        // They'll be re-linked on next findNearestItineraryStop call
-                        for (const subMarker of subMarkers) {
-                            const nearestStopName = findNearestNewStopName(subMarker.coordinates);
-                            if (nearestStopName) {
-                                console.log('[Add Itinerary] Sub-marker', subMarker.name, 'should link to', nearestStopName);
-                                // Clear the old parentStopId - the sub-marker will still show on the map
-                                // When the map renders, findNearestItineraryStop will re-link it
-                                updateMapPin(chatId, subMarker.id, { parentStopId: undefined });
-                            } else {
-                                console.log('[Add Itinerary] Sub-marker', subMarker.name, 'has no nearby stop, clearing parent');
-                                updateMapPin(chatId, subMarker.id, { parentStopId: undefined });
-                            }
-                        }
-                    }, 200 * attempt);
-                };
-                checkAndRelink(1);
-            };
-            relinkSubMarkers();
+            // Re-link each sub-marker to its nearest new itinerary stop
+            for (const subMarker of subMarkers) {
+                const nearestPinId = findNearestNewStopId(subMarker.coordinates);
+                if (nearestPinId) {
+                    const nearestStop = newStopData.find(s => s.pinId === nearestPinId);
+                    console.log('[Add Itinerary] Re-linking', subMarker.name, 'to', nearestStop?.name, '(pin:', nearestPinId, ')');
+                    updateMapPin(activeChat.id, subMarker.id, { parentStopId: nearestPinId });
+                } else {
+                    console.log('[Add Itinerary] No nearby stop for', subMarker.name, '- clearing parent');
+                    updateMapPin(activeChat.id, subMarker.id, { parentStopId: undefined });
+                }
+            }
         }
 
         console.log('[Add Itinerary] Complete. Total stops:', extractedItinerary.stops.length, 'Failed:', failedStops.length);

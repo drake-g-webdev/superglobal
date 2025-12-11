@@ -403,7 +403,7 @@ interface ChatsContextType {
   updateTripContext: (chatId: string, updates: Partial<TripContext>) => void;
   markTripSetupComplete: (chatId: string) => void;
   // Map functions
-  addMapPin: (chatId: string, pin: Omit<MapPin, 'id' | 'createdAt'>) => void;
+  addMapPin: (chatId: string, pin: Omit<MapPin, 'id' | 'createdAt'>) => string; // Returns generated pin ID
   addMapPins: (chatId: string, pins: Omit<MapPin, 'id' | 'createdAt'>[]) => void;
   removeMapPin: (chatId: string, pinId: string) => void;
   clearMapPins: (chatId: string) => void;
@@ -932,8 +932,8 @@ export function ChatsProvider({ children }: { children: ReactNode }) {
     ));
   };
 
-  // Map pin management functions
-  const addMapPin = (chatId: string, pin: Omit<MapPin, 'id' | 'createdAt'>) => {
+  // Map pin management functions - returns the generated pin ID
+  const addMapPin = (chatId: string, pin: Omit<MapPin, 'id' | 'createdAt'>): string => {
     console.log('[ChatsContext] addMapPin called with placeDetails:', pin.placeDetails ? JSON.stringify(pin.placeDetails, null, 2) : 'undefined');
     const newPin: MapPin = {
       ...pin,
@@ -946,6 +946,7 @@ export function ChatsProvider({ children }: { children: ReactNode }) {
         ? { ...chat, mapPins: [...chat.mapPins, newPin], updatedAt: Date.now() }
         : chat
     ));
+    return newPin.id;
   };
 
   const addMapPins = (chatId: string, pins: Omit<MapPin, 'id' | 'createdAt'>[]) => {

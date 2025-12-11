@@ -881,50 +881,170 @@ class ExtractLocationsResponse(BaseModel):
     locations: list[ExtractedLocation]
 
 
-LOCATION_EXTRACTION_PROMPT = """Extract all specific, mappable locations from this travel recommendation text.
+# Blocklist of vague/generic location terms that should NOT get add-to-map buttons
+# These terms are too generic to geocode reliably and often match random places worldwide
+VAGUE_LOCATION_BLOCKLIST = {
+    # Generic establishment types
+    "local markets", "local market", "markets", "market",
+    "street food stalls", "street food", "food stalls", "stalls",
+    "small eateries", "eateries", "local eateries",
+    "tea stalls", "tea shops", "chai stalls",
+    "food joints", "local joints", "small joints",
+    "roadside stalls", "roadside restaurants", "roadside eateries",
+    "local restaurants", "local cafes", "local bars",
+    "street vendors", "vendors", "hawkers", "food hawkers",
+    "food carts", "carts", "food trucks",
+    "night markets", "morning markets", "weekend markets",
+    "floating markets",  # Unless specific name given
+    "wet markets", "fish markets", "spice markets",
+    # Generic accommodation types
+    "local guesthouses", "guesthouses", "guesthouse",
+    "budget hotels", "budget hostels", "cheap hotels",
+    "local hotels", "local hostels",
+    "family-run guesthouses", "family guesthouses",
+    # Generic area descriptions
+    "old town", "the old town", "old quarter", "the old quarter",
+    "city center", "town center", "downtown",
+    "tourist area", "tourist district", "backpacker area",
+    "main street", "high street", "main road",
+    "waterfront", "the waterfront", "riverside", "the riverside",
+    "beach area", "the beach", "beachfront",
+    "hill station", "mountain area", "valley",
+    # Generic activity locations
+    "local temples", "temples", "temple area",
+    "local beaches", "beaches", "beach",
+    "hiking trails", "trails", "trekking routes",
+    "viewpoints", "scenic viewpoints", "lookout points",
+    "national parks", "parks", "nature reserves",
+    # Other generic terms
+    "suburbs", "outskirts", "countryside",
+    "villages", "village", "towns", "town",
+    "neighborhoods", "neighborhood", "area", "district",
+    "on-site restaurant", "on site restaurant", "hotel restaurant",
+    "resort restaurant", "eco resort restaurant",
+}
 
-For each location found, provide:
-- name: The specific name of the place (e.g., "Lub d Bangkok Silom", "Secret Garden Hostel", "Grand Palace")
-- type: One of: accommodation, restaurant, activity, historic, transport, city, other
-- description: A brief description from the context (1 sentence max)
-- area: The specific area, city, region, or landmark this location is near or in (e.g., "Cotopaxi National Park", "Quito Old Town", "Banos"). This is CRITICAL for geocoding - extract the most specific geographic context from the surrounding text.
+# Patterns that indicate a location is too vague (regex patterns)
+VAGUE_LOCATION_PATTERNS = [
+    r"^local\s+",           # Starts with "local"
+    r"^the\s+",             # Starts with "the" (e.g., "the markets")
+    r"\s+area$",            # Ends with "area"
+    r"\s+district$",        # Ends with "district"
+    r"\s+region$",          # Ends with "region"
+    r"^nearby\s+",          # Starts with "nearby"
+    r"^various\s+",         # Starts with "various"
+    r"^some\s+",            # Starts with "some"
+    r"^many\s+",            # Starts with "many"
+    r"^any\s+",             # Starts with "any"
+    r"^small\s+",           # Starts with "small"
+    r"'s\s+(on-site|restaurant|cafe)$",  # Possessive + generic (e.g., "Resort's on-site restaurant")
+]
+
+
+def is_vague_location(name: str) -> bool:
+    """Check if a location name is too vague/generic to be mappable.
+
+    Returns True if the location should be filtered out.
+    """
+    import re
+
+    name_lower = name.lower().strip()
+
+    # Check against blocklist
+    if name_lower in VAGUE_LOCATION_BLOCKLIST:
+        return True
+
+    # Check if name is a subset match in blocklist (for variations)
+    for blocked in VAGUE_LOCATION_BLOCKLIST:
+        # If the name IS the blocked term (already checked above)
+        # Or if the blocked term is the entire name
+        if blocked == name_lower:
+            return True
+
+    # Check against regex patterns
+    for pattern in VAGUE_LOCATION_PATTERNS:
+        if re.search(pattern, name_lower):
+            return True
+
+    # Check for very short names (likely too vague)
+    if len(name_lower) < 4:
+        return True
+
+    # Check if name is ONLY generic words with no specific identifier
+    generic_only_words = {"and", "or", "the", "a", "an", "in", "at", "on", "to", "for", "with", "near", "by"}
+    words = set(name_lower.split())
+    if words.issubset(generic_only_words):
+        return True
+
+    return False
+
+
+LOCATION_EXTRACTION_PROMPT = """Extract ONLY specific, named locations that can be pinned on a map.
+
+CRITICAL - The difference between SPECIFIC and GENERIC:
+✅ SPECIFIC (extract these - they have proper names):
+- "Nilkantha Tea Cabin" - a specific restaurant with a name
+- "Lawachara National Park" - a specific park with a name
+- "Sreemangal" - a specific town name
+- "Ratargul Swamp Forest" - a specific place name
+- "Cafe Mosaico" - a specific cafe with a name
+- "Grand Palace" - a specific landmark with a name
+
+❌ GENERIC (DO NOT extract - these are categories, not places):
+- "local markets" / "markets" / "the market"
+- "street food stalls" / "food stalls"
+- "small eateries" / "local restaurants"
+- "tea stalls" / "chai shops" / "tea shops"
+- "on-site restaurant" / "hotel restaurant"
+- "the old town" / "old quarter"
+- "nearby temples" / "local temples"
+
+The test: Could you find this ONE specific place on Google Maps?
+- "Kawran Bazaar" → Yes ✅ (specific market name)
+- "local markets" → No ❌ (generic category)
+- "Sundarbans" → Yes ✅ (specific place)
+- "street food stalls" → No ❌ (generic category)
+
+For each SPECIFIC named location, provide:
+- name: The PROPER NAME (must be searchable on a map)
+- type: accommodation, restaurant, activity, historic, transport, city, or other
+- description: Brief description (1 sentence)
+- area: The city/region for geocoding context
 
 TYPE DEFINITIONS:
-- accommodation: Hostels, hotels, guesthouses, Airbnbs, any place to stay
-- restaurant: Restaurants, cafes, bars, food stalls, any eating/drinking establishment
-- activity: Tours, hikes, adventure activities, beaches (for surfing/swimming), parks, natural attractions
-- historic: Museums, temples, churches, historical monuments, town squares, cultural sites
-- transport: Bus stations, airports, train stations, ferry terminals
-- city: Cities, towns, villages, neighborhoods, beach towns (when mentioned as a destination, not an activity)
-- other: Anything that doesn't fit the above categories
+- accommodation: Named hostels, hotels, guesthouses
+- restaurant: Named restaurants, cafes, bars (NOT "local restaurants")
+- activity: Named parks, trails, tours, beaches
+- historic: Named museums, temples, monuments
+- transport: Named stations, airports, terminals
+- city: Towns, villages, neighborhoods (these ARE specific)
+- other: Other specific named places
 
 RULES:
-1. Only extract SPECIFIC named locations that could be placed on a map
-2. DO NOT extract general areas or vague descriptions (e.g., "the old town", "local markets") as the name
-3. DO NOT extract countries or large regions as the name
-4. IMPORTANT: Use "city" for towns/villages like Quito, Baños, Tena, Montañita, Canoa - NOT "landmark" or "other"
-5. Use "restaurant" for ALL eating/drinking places including cafes, bars, breweries, food markets
-6. Use "historic" for museums, temples, churches, historical sites - NOT for general towns
-7. For the "area" field, use the most specific geographic context mentioned near the location in the text
-8. If no specific locations are found, return an empty list
-9. IMPORTANT - SPLIT ALTERNATIVES: When text mentions multiple places with "or", "and", or "/" between them, extract each as a SEPARATE location:
-   - "Montañita or Canoa" → TWO entries: one for "Montañita" and one for "Canoa"
-   - "Quilotoa and Cotopaxi" → TWO entries: one for "Quilotoa" and one for "Cotopaxi"
-   - "Baños/Puyo" → TWO entries: one for "Baños" and one for "Puyo"
+1. ONLY extract places with PROPER NAMES
+2. NEVER extract generic terms like "local markets", "street food stalls", "small eateries"
+3. Cities/towns ARE valid (e.g., "Sreemangal" is specific and mappable)
+4. Parks/forests with names ARE valid (e.g., "Lawachara National Park")
+5. If text mentions "check out the local markets" - extract NOTHING
+6. If text mentions "check out Kawran Bazaar" - extract "Kawran Bazaar"
+7. When in doubt, do NOT extract
+8. Return empty list [] if no specific named places exist
 
 TEXT TO ANALYZE:
 {text}
 
-Respond with ONLY a JSON array of objects. Example:
+Respond with ONLY a JSON array:
+
+Example from "Visit Lawachara National Park and grab tea at Nilkantha Tea Cabin":
 [
-  {{"name": "Secret Garden Hostel", "type": "accommodation", "description": "Eco-hostel with volcano views", "area": "Cotopaxi National Park"}},
-  {{"name": "Cafe Mosaico", "type": "restaurant", "description": "Rooftop cafe with city views", "area": "Quito Old Town"}},
-  {{"name": "Montañita", "type": "city", "description": "Beach town known for surfing and nightlife", "area": "Ecuador Coast"}},
-  {{"name": "Canoa", "type": "city", "description": "Quieter beach town with great surf spots", "area": "Ecuador Coast"}},
-  {{"name": "La Compañía de Jesús", "type": "historic", "description": "Stunning baroque church with gold-leaf interior", "area": "Quito Old Town"}}
+  {{"name": "Lawachara National Park", "type": "activity", "description": "Rainforest with wildlife", "area": "Sreemangal"}},
+  {{"name": "Nilkantha Tea Cabin", "type": "restaurant", "description": "Local tea spot", "area": "Sreemangal"}}
 ]
 
-If no locations found, respond with: []
+Example from "Explore local markets and try street food stalls":
+[]
+
+If no specific named locations, respond with: []
 """
 
 
@@ -959,18 +1079,26 @@ async def extract_locations(request: ExtractLocationsRequest):
         locations = []
         for loc in locations_data:
             if isinstance(loc, dict) and "name" in loc:
+                loc_name = loc["name"].strip()
+
+                # Filter out vague/generic locations that slipped through the AI
+                if is_vague_location(loc_name):
+                    logging.info(f"[Location Extraction] Filtered vague location: '{loc_name}'")
+                    continue
+
                 loc_type = loc.get("type", "other").lower()
                 # Map old types to new types
                 loc_type = type_mapping.get(loc_type, loc_type)
                 if loc_type not in valid_types:
                     loc_type = "other"
                 locations.append(ExtractedLocation(
-                    name=loc["name"],
+                    name=loc_name,
                     type=loc_type,
                     description=loc.get("description", ""),
                     area=loc.get("area", "")  # Geographic context for geocoding
                 ))
 
+        logging.info(f"[Location Extraction] Extracted {len(locations)} valid locations from {len(locations_data)} candidates")
         return ExtractLocationsResponse(locations=locations)
 
     except json.JSONDecodeError as e:
@@ -997,60 +1125,92 @@ class GeocodeResponse(BaseModel):
     formatted_name: Optional[str] = None
 
 
-# Country name to ISO 3166-1 alpha-2 code mapping for Mapbox filtering
+# Complete ISO 3166-1 alpha-2 country code mapping for worldwide geocoding
+# Includes common name variations and aliases
 COUNTRY_CODES = {
-    "ecuador": "ec",
-    "peru": "pe",
-    "colombia": "co",
-    "bolivia": "bo",
-    "chile": "cl",
-    "argentina": "ar",
-    "brazil": "br",
-    "thailand": "th",
-    "vietnam": "vn",
-    "cambodia": "kh",
-    "laos": "la",
-    "myanmar": "mm",
-    "indonesia": "id",
-    "malaysia": "my",
-    "singapore": "sg",
-    "philippines": "ph",
-    "japan": "jp",
-    "south korea": "kr",
-    "korea": "kr",
-    "china": "cn",
-    "india": "in",
-    "nepal": "np",
-    "sri lanka": "lk",
-    "mexico": "mx",
-    "guatemala": "gt",
-    "belize": "bz",
-    "honduras": "hn",
-    "nicaragua": "ni",
-    "costa rica": "cr",
-    "panama": "pa",
-    "spain": "es",
-    "portugal": "pt",
-    "france": "fr",
-    "italy": "it",
-    "germany": "de",
-    "netherlands": "nl",
-    "belgium": "be",
-    "greece": "gr",
-    "turkey": "tr",
-    "morocco": "ma",
-    "egypt": "eg",
-    "south africa": "za",
-    "kenya": "ke",
-    "tanzania": "tz",
-    "australia": "au",
-    "new zealand": "nz",
-    "usa": "us",
-    "united states": "us",
-    "canada": "ca",
-    "uk": "gb",
-    "united kingdom": "gb",
-    "england": "gb",
+    # Africa
+    "algeria": "dz", "angola": "ao", "benin": "bj", "botswana": "bw", "burkina faso": "bf",
+    "burundi": "bi", "cameroon": "cm", "cape verde": "cv", "cabo verde": "cv",
+    "central african republic": "cf", "chad": "td", "comoros": "km", "congo": "cg",
+    "democratic republic of the congo": "cd", "drc": "cd", "djibouti": "dj", "egypt": "eg",
+    "equatorial guinea": "gq", "eritrea": "er", "eswatini": "sz", "swaziland": "sz",
+    "ethiopia": "et", "gabon": "ga", "gambia": "gm", "ghana": "gh", "guinea": "gn",
+    "guinea-bissau": "gw", "ivory coast": "ci", "cote d'ivoire": "ci", "kenya": "ke",
+    "lesotho": "ls", "liberia": "lr", "libya": "ly", "madagascar": "mg", "malawi": "mw",
+    "mali": "ml", "mauritania": "mr", "mauritius": "mu", "morocco": "ma", "mozambique": "mz",
+    "namibia": "na", "niger": "ne", "nigeria": "ng", "rwanda": "rw", "sao tome and principe": "st",
+    "senegal": "sn", "seychelles": "sc", "sierra leone": "sl", "somalia": "so",
+    "south africa": "za", "south sudan": "ss", "sudan": "sd", "tanzania": "tz",
+    "togo": "tg", "tunisia": "tn", "uganda": "ug", "zambia": "zm", "zimbabwe": "zw",
+
+    # Americas - North
+    "canada": "ca", "mexico": "mx", "united states": "us", "usa": "us", "america": "us",
+
+    # Americas - Central
+    "belize": "bz", "costa rica": "cr", "el salvador": "sv", "guatemala": "gt",
+    "honduras": "hn", "nicaragua": "ni", "panama": "pa",
+
+    # Americas - Caribbean
+    "antigua and barbuda": "ag", "bahamas": "bs", "barbados": "bb", "cuba": "cu",
+    "dominica": "dm", "dominican republic": "do", "grenada": "gd", "haiti": "ht",
+    "jamaica": "jm", "puerto rico": "pr", "saint kitts and nevis": "kn", "saint lucia": "lc",
+    "saint vincent and the grenadines": "vc", "trinidad and tobago": "tt",
+
+    # Americas - South
+    "argentina": "ar", "bolivia": "bo", "brazil": "br", "chile": "cl", "colombia": "co",
+    "ecuador": "ec", "guyana": "gy", "paraguay": "py", "peru": "pe", "suriname": "sr",
+    "uruguay": "uy", "venezuela": "ve",
+
+    # Asia - East
+    "china": "cn", "hong kong": "hk", "japan": "jp", "macau": "mo", "mongolia": "mn",
+    "north korea": "kp", "south korea": "kr", "korea": "kr", "taiwan": "tw",
+
+    # Asia - Southeast
+    "brunei": "bn", "cambodia": "kh", "indonesia": "id", "laos": "la", "malaysia": "my",
+    "myanmar": "mm", "burma": "mm", "philippines": "ph", "singapore": "sg", "thailand": "th",
+    "timor-leste": "tl", "east timor": "tl", "vietnam": "vn",
+
+    # Asia - South
+    "afghanistan": "af", "bangladesh": "bd", "bhutan": "bt", "india": "in", "maldives": "mv",
+    "nepal": "np", "pakistan": "pk", "sri lanka": "lk",
+
+    # Asia - Central
+    "kazakhstan": "kz", "kyrgyzstan": "kg", "tajikistan": "tj", "turkmenistan": "tm",
+    "uzbekistan": "uz",
+
+    # Asia - West / Middle East
+    "armenia": "am", "azerbaijan": "az", "bahrain": "bh", "cyprus": "cy", "georgia": "ge",
+    "iran": "ir", "iraq": "iq", "israel": "il", "jordan": "jo", "kuwait": "kw",
+    "lebanon": "lb", "oman": "om", "palestine": "ps", "qatar": "qa", "saudi arabia": "sa",
+    "syria": "sy", "turkey": "tr", "turkiye": "tr", "united arab emirates": "ae", "uae": "ae",
+    "yemen": "ye",
+
+    # Europe - Western
+    "austria": "at", "belgium": "be", "france": "fr", "germany": "de", "liechtenstein": "li",
+    "luxembourg": "lu", "monaco": "mc", "netherlands": "nl", "holland": "nl", "switzerland": "ch",
+
+    # Europe - Northern
+    "denmark": "dk", "estonia": "ee", "finland": "fi", "iceland": "is", "ireland": "ie",
+    "latvia": "lv", "lithuania": "lt", "norway": "no", "sweden": "se",
+    "united kingdom": "gb", "uk": "gb", "england": "gb", "scotland": "gb", "wales": "gb",
+    "northern ireland": "gb", "great britain": "gb",
+
+    # Europe - Southern
+    "albania": "al", "andorra": "ad", "bosnia and herzegovina": "ba", "croatia": "hr",
+    "greece": "gr", "italy": "it", "kosovo": "xk", "malta": "mt", "montenegro": "me",
+    "north macedonia": "mk", "macedonia": "mk", "portugal": "pt", "san marino": "sm",
+    "serbia": "rs", "slovenia": "si", "spain": "es", "vatican city": "va",
+
+    # Europe - Eastern
+    "belarus": "by", "bulgaria": "bg", "czech republic": "cz", "czechia": "cz",
+    "hungary": "hu", "moldova": "md", "poland": "pl", "romania": "ro", "russia": "ru",
+    "slovakia": "sk", "ukraine": "ua",
+
+    # Oceania
+    "australia": "au", "fiji": "fj", "kiribati": "ki", "marshall islands": "mh",
+    "micronesia": "fm", "nauru": "nr", "new zealand": "nz", "palau": "pw",
+    "papua new guinea": "pg", "samoa": "ws", "solomon islands": "sb", "tonga": "to",
+    "tuvalu": "tv", "vanuatu": "vu",
 }
 
 # Known city center points for proximity-based geocoding (lng, lat)
@@ -1084,6 +1244,48 @@ CITY_CENTERS = {
     "tokyo": (139.69, 35.69),
     "seoul": (126.98, 37.57),
     "hong kong": (114.17, 22.32),
+
+    # South Asia - Bangladesh
+    "dhaka": (90.41, 23.81),
+    "bangladesh": (90.41, 23.81),  # Default to Dhaka
+    "chittagong": (91.83, 22.36),
+    "sylhet": (91.87, 24.90),
+    "sreemangal": (91.73, 24.31),
+    "srimongol": (91.73, 24.31),  # Alternative spelling
+    "cox's bazar": (91.98, 21.43),
+    "coxs bazar": (91.98, 21.43),
+    "sundarbans": (89.18, 21.95),
+    "khulna": (89.56, 22.82),
+    "rajshahi": (88.60, 24.37),
+    "rangpur": (89.25, 25.75),
+
+    # South Asia - India
+    "mumbai": (72.88, 19.08),
+    "delhi": (77.21, 28.64),
+    "new delhi": (77.21, 28.64),
+    "kolkata": (88.36, 22.57),
+    "bangalore": (77.59, 12.97),
+    "chennai": (80.27, 13.08),
+    "goa": (73.83, 15.50),
+    "jaipur": (75.79, 26.92),
+    "varanasi": (83.00, 25.32),
+    "agra": (78.02, 27.18),
+    "kerala": (76.27, 10.85),
+    "kochi": (76.27, 9.93),
+    "rishikesh": (78.27, 30.09),
+    "mcleod ganj": (76.32, 32.24),
+    "dharamsala": (76.32, 32.22),
+    "manali": (77.19, 32.24),
+    "leh": (77.58, 34.16),
+    "ladakh": (77.58, 34.16),
+    "darjeeling": (88.27, 27.04),
+    "sikkim": (88.51, 27.33),
+    "gangtok": (88.61, 27.33),
+
+    # South Asia - Nepal
+    "kathmandu": (85.32, 27.72),
+    "pokhara": (83.98, 28.21),
+    "chitwan": (84.43, 27.53),
 
     # South America - Ecuador
     "quito": (-78.47, -0.18),
@@ -1152,6 +1354,84 @@ CITY_CENTERS = {
     "melbourne": (144.96, -37.81),
     "auckland": (174.76, -36.85),
 }
+
+
+# Reverse mapping: country code to country names (for validating geocode results)
+# We check if any of these names appear in the formatted address returned by geocoding APIs
+COUNTRY_CODE_TO_NAMES = {
+    # Generate reverse mapping from COUNTRY_CODES, grouping by code
+}
+
+# Build the reverse mapping dynamically
+def _build_country_names_map():
+    """Build a mapping from country code to list of possible country names."""
+    code_to_names = {}
+    for name, code in COUNTRY_CODES.items():
+        if code not in code_to_names:
+            code_to_names[code] = []
+        code_to_names[code].append(name)
+    # Add official/formal names that might appear in geocoding results
+    additional_names = {
+        "us": ["united states of america", "u.s.a.", "u.s."],
+        "gb": ["britain", "uk"],
+        "kr": ["republic of korea"],
+        "kp": ["democratic people's republic of korea"],
+        "cn": ["people's republic of china"],
+        "tw": ["chinese taipei"],
+        "ae": ["emirates"],
+        "bd": ["people's republic of bangladesh"],
+        "vn": ["viet nam"],
+        "la": ["lao people's democratic republic", "lao pdr"],
+        "ir": ["islamic republic of iran", "persia"],
+        "ru": ["russian federation"],
+        "cz": ["czech"],
+        "mm": ["burma"],
+    }
+    for code, names in additional_names.items():
+        if code in code_to_names:
+            code_to_names[code].extend(names)
+        else:
+            code_to_names[code] = names
+    return code_to_names
+
+COUNTRY_CODE_TO_NAMES = _build_country_names_map()
+
+
+def is_result_in_expected_country(formatted_address: str, expected_country_code: str) -> bool:
+    """Check if a geocoded result's formatted address contains the expected country.
+
+    This is more reliable than bounding boxes because:
+    1. Works for ALL countries without hardcoding bounds
+    2. Uses the geocoding API's own country identification
+    3. Handles edge cases and overseas territories properly
+
+    Args:
+        formatted_address: The formatted address from geocoding (e.g., "Local Markets, Tasmania, Australia")
+        expected_country_code: ISO 3166-1 alpha-2 country code (lowercase)
+
+    Returns:
+        True if the address appears to be in the expected country, or if we can't determine
+    """
+    if not expected_country_code or not formatted_address:
+        return True  # Can't validate, allow it
+
+    address_lower = formatted_address.lower()
+
+    # Get all possible names for this country
+    country_names = COUNTRY_CODE_TO_NAMES.get(expected_country_code, [])
+
+    if not country_names:
+        # Unknown country code - can't validate, allow it
+        return True
+
+    # Check if any country name appears in the formatted address
+    for name in country_names:
+        if name in address_lower:
+            return True
+
+    # Country name not found in address - likely wrong country
+    logging.warning(f"[Geocode Validation] Address '{formatted_address}' does not contain expected country (code: {expected_country_code}, names: {country_names[:3]})")
+    return False
 
 
 async def geocode_with_google(query: str, region_bias: str = None) -> dict | None:
@@ -1432,6 +1712,10 @@ async def geocode_location(request: GeocodeRequest):
     for query in queries_to_try:
         result = await geocode_with_google(query, region_bias=country_code)
         if result:
+            # Validate result is in the expected country by checking formatted address
+            if country_code and not is_result_in_expected_country(result["formatted_name"], country_code):
+                logging.warning(f"[Geocode] Google result '{result['formatted_name']}' not in expected country {country_code}, skipping")
+                continue
             logging.info(f"[Geocode] SUCCESS via Google: {result['formatted_name']}")
             return GeocodeResponse(
                 success=True,
@@ -1443,6 +1727,10 @@ async def geocode_location(request: GeocodeRequest):
     for query in queries_to_try:
         result = await geocode_with_nominatim(query, viewbox)
         if result:
+            # Validate result is in the expected country by checking formatted address
+            if country_code and not is_result_in_expected_country(result["formatted_name"], country_code):
+                logging.warning(f"[Geocode] Nominatim result '{result['formatted_name']}' not in expected country {country_code}, skipping")
+                continue
             logging.info(f"[Geocode] SUCCESS via Nominatim: {result['formatted_name']}")
             return GeocodeResponse(
                 success=True,

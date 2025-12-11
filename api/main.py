@@ -979,72 +979,70 @@ def is_vague_location(name: str) -> bool:
     return False
 
 
-LOCATION_EXTRACTION_PROMPT = """Extract ONLY specific, named locations that can be pinned on a map.
+LOCATION_EXTRACTION_PROMPT = """Extract specific, named locations that can be pinned on a map.
 
-CRITICAL - The difference between SPECIFIC and GENERIC:
-✅ SPECIFIC (extract these - they have proper names):
-- "Nilkantha Tea Cabin" - a specific restaurant with a name
-- "Lawachara National Park" - a specific park with a name
-- "Sreemangal" - a specific town name
-- "Ratargul Swamp Forest" - a specific place name
-- "Cafe Mosaico" - a specific cafe with a name
-- "Grand Palace" - a specific landmark with a name
+WHAT TO EXTRACT (specific named places):
+✅ "Karamjal Crocodile Breeding Center" - specific wildlife center
+✅ "Lawachara National Park" - specific park
+✅ "Katka" / "Kachikhali" - specific areas/spots
+✅ "Sundarbans" - specific region
+✅ "Nilkantha Tea Cabin" - specific restaurant
+✅ "Sreemangal" - specific town
+✅ "Grand Palace" - specific landmark
+✅ "Cox's Bazar" - specific beach/city
 
-❌ GENERIC (DO NOT extract - these are categories, not places):
-- "local markets" / "markets" / "the market"
-- "street food stalls" / "food stalls"
-- "small eateries" / "local restaurants"
-- "tea stalls" / "chai shops" / "tea shops"
-- "on-site restaurant" / "hotel restaurant"
-- "the old town" / "old quarter"
-- "nearby temples" / "local temples"
+WHAT NOT TO EXTRACT (generic categories):
+❌ "local markets" / "markets" / "the market"
+❌ "street food stalls" / "food stalls"
+❌ "small eateries" / "local restaurants"
+❌ "fishing villages" / "villages" (generic)
+❌ "walking trails" / "trails" (generic)
+❌ "on-site restaurant" / "hotel restaurant"
+❌ "the old town" / "old quarter"
 
-The test: Could you find this ONE specific place on Google Maps?
-- "Kawran Bazaar" → Yes ✅ (specific market name)
-- "local markets" → No ❌ (generic category)
-- "Sundarbans" → Yes ✅ (specific place)
-- "street food stalls" → No ❌ (generic category)
+The key question: Does it have a PROPER NAME that you could search on Google Maps?
+- "Karamjal Crocodile Breeding Center" → YES, extract it
+- "crocodile breeding centers" → NO, generic category
+- "Katka" → YES, it's a named location
+- "tiger sighting spots" → NO, generic description
 
-For each SPECIFIC named location, provide:
-- name: The PROPER NAME (must be searchable on a map)
+For each location, provide:
+- name: The exact proper name
 - type: accommodation, restaurant, activity, historic, transport, city, or other
 - description: Brief description (1 sentence)
-- area: The city/region for geocoding context
+- area: The city/region for geocoding (e.g., "Sundarbans", "Bangladesh")
 
 TYPE DEFINITIONS:
+- activity: Parks, wildlife centers, conservation areas, trails, tours, beaches, natural attractions
+- historic: Museums, temples, monuments, heritage sites
+- restaurant: Named restaurants, cafes, bars
 - accommodation: Named hostels, hotels, guesthouses
-- restaurant: Named restaurants, cafes, bars (NOT "local restaurants")
-- activity: Named parks, trails, tours, beaches
-- historic: Named museums, temples, monuments
 - transport: Named stations, airports, terminals
-- city: Towns, villages, neighborhoods (these ARE specific)
+- city: Towns, villages, named neighborhoods, named areas
 - other: Other specific named places
 
 RULES:
-1. ONLY extract places with PROPER NAMES
-2. NEVER extract generic terms like "local markets", "street food stalls", "small eateries"
-3. Cities/towns ARE valid (e.g., "Sreemangal" is specific and mappable)
-4. Parks/forests with names ARE valid (e.g., "Lawachara National Park")
-5. If text mentions "check out the local markets" - extract NOTHING
-6. If text mentions "check out Kawran Bazaar" - extract "Kawran Bazaar"
-7. When in doubt, do NOT extract
-8. Return empty list [] if no specific named places exist
+1. Extract ALL places that have proper names
+2. DO NOT extract generic descriptions without specific names
+3. Named areas like "Katka", "Kachikhali" ARE specific - extract them
+4. Wildlife centers, breeding centers, conservation centers with names ARE specific
+5. If unsure whether something is a proper name, lean toward extracting it
 
 TEXT TO ANALYZE:
 {text}
 
 Respond with ONLY a JSON array:
 
-Example from "Visit Lawachara National Park and grab tea at Nilkantha Tea Cabin":
+Example input: "Visit Karamjal Crocodile Breeding Center and head to Katka for tiger spotting"
 [
-  {{"name": "Lawachara National Park", "type": "activity", "description": "Rainforest with wildlife", "area": "Sreemangal"}},
-  {{"name": "Nilkantha Tea Cabin", "type": "restaurant", "description": "Local tea spot", "area": "Sreemangal"}}
+  {{"name": "Karamjal Crocodile Breeding Center", "type": "activity", "description": "Crocodile conservation center", "area": "Sundarbans"}},
+  {{"name": "Katka", "type": "activity", "description": "Tiger sighting area", "area": "Sundarbans"}}
 ]
 
-Example from "Explore local markets and try street food stalls":
+Example input: "Explore local markets and try street food"
 []
 
-If no specific named locations, respond with: []
+Return [] only if there are truly NO named places in the text.
 """
 
 

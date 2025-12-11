@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { Send, MapPin, DollarSign, User, Settings, Compass, Calendar, Target, Map as MapIcon, Plus, Check, Loader2, MessageSquare, ChevronLeft, ChevronRight, Calculator, ListChecks, Backpack, CalendarDays, Mountain, Sailboat, Tent, Footprints, X, Menu, ArrowLeft } from 'lucide-react';
+import { Send, MapPin, DollarSign, User, Settings, Compass, Calendar, Target, Map as MapIcon, Plus, Check, Loader2, MessageSquare, ChevronLeft, ChevronRight, Calculator, ListChecks, Backpack, CalendarDays, Mountain, Sailboat, Tent, Footprints, X, Menu, ArrowLeft, AlertTriangle } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import ReactMarkdown, { Components } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -318,9 +318,9 @@ export default function ChatInterface() {
     }, [mergeConversationVariables]);
 
     // Extract itinerary from a message using AI
-    const extractItineraryFromMessage = useCallback(async (messageContent: string, messageIndex: number, chatId: string, destination: string) => {
+    const extractItineraryFromMessage = useCallback(async (messageContent: string, messageIndex: number, chatId: string, destination: string, expectedDays: number = 0) => {
         const key = `itinerary-${chatId}-${messageIndex}`;
-        console.log('[Itinerary Extraction] Starting extraction for key:', key);
+        console.log('[Itinerary Extraction] Starting extraction for key:', key, 'expectedDays:', expectedDays);
 
         // Check if already in flight
         if (itineraryInFlightRef.current.has(key)) {
@@ -333,13 +333,14 @@ export default function ChatInterface() {
         setExtractingItinerary(prev => new Set([...prev, key]));
 
         try {
-            console.log('[Itinerary Extraction] Calling API for:', destination);
+            console.log('[Itinerary Extraction] Calling API for:', destination, 'expected_days:', expectedDays);
             const response = await fetch(`${API_URL}/api/extract-itinerary`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     response_text: messageContent,
                     destination: destination,
+                    expected_days: expectedDays,
                 }),
             });
 
@@ -356,9 +357,10 @@ export default function ChatInterface() {
                         })),
                         totalDays: data.total_days,
                         hasItinerary: true,
+                        matchesExpectedDays: data.matches_expected_days ?? true,
                     };
 
-                    console.log('[Itinerary Extraction] Extracted itinerary:', extractedItinerary.stops.length, 'stops,', extractedItinerary.totalDays, 'days');
+                    console.log('[Itinerary Extraction] Extracted itinerary:', extractedItinerary.stops.length, 'stops,', extractedItinerary.totalDays, 'days, matchesExpected:', extractedItinerary.matchesExpectedDays);
                     setExtractedItinerary(chatId, messageIndex, extractedItinerary);
                 }
             } else {
@@ -960,49 +962,76 @@ export default function ChatInterface() {
                     />
                 )}
                 {/* Show extracted itinerary with "Use This Itinerary" button */}
-                {activeChat?.extractedItineraries?.[messageIndex]?.hasItinerary && (
-                    <div className="mt-3 p-3 bg-gradient-to-r from-orange-900/30 to-amber-900/20 border border-orange-500/30 rounded-lg">
-                        <div className="flex items-center justify-between mb-2">
-                            <div className="flex items-center gap-2">
-                                <Calendar size={16} className="text-orange-400" />
-                                <span className="text-sm font-semibold text-orange-300">
-                                    Itinerary Detected ({activeChat.extractedItineraries[messageIndex].totalDays} days)
-                                </span>
+                {activeChat?.extractedItineraries?.[messageIndex]?.hasItinerary && (() => {
+                    const extractedItinerary = activeChat.extractedItineraries[messageIndex];
+                    const expectedDays = activeChat.tripContext?.tripDurationDays || 0;
+                    const matchesExpected = extractedItinerary.matchesExpectedDays !== false;
+                    const daysDiff = expectedDays > 0 ? extractedItinerary.totalDays - expectedDays : 0;
+
+                    return (
+                        <div className={clsx(
+                            "mt-3 p-3 rounded-lg border",
+                            matchesExpected
+                                ? "bg-gradient-to-r from-orange-900/30 to-amber-900/20 border-orange-500/30"
+                                : "bg-gradient-to-r from-red-900/30 to-amber-900/20 border-red-500/30"
+                        )}>
+                            <div className="flex items-center justify-between mb-2">
+                                <div className="flex items-center gap-2">
+                                    <Calendar size={16} className={matchesExpected ? "text-orange-400" : "text-red-400"} />
+                                    <span className={clsx("text-sm font-semibold", matchesExpected ? "text-orange-300" : "text-red-300")}>
+                                        Itinerary Detected ({extractedItinerary.totalDays} days)
+                                    </span>
+                                    {!matchesExpected && expectedDays > 0 && (
+                                        <span className="text-xs bg-red-600/30 text-red-400 px-2 py-0.5 rounded flex items-center gap-1">
+                                            <AlertTriangle size={10} />
+                                            {daysDiff > 0 ? `${daysDiff} days over` : `${Math.abs(daysDiff)} days short`}
+                                        </span>
+                                    )}
+                                </div>
+                                {activeChat.tripContext?.itineraryBreakdown && activeChat.tripContext.itineraryBreakdown.length > 0 ? (
+                                    <span className="flex items-center gap-1 text-xs bg-green-600/30 text-green-400 px-2 py-1 rounded">
+                                        <Check size={12} />
+                                        Added to Trip
+                                    </span>
+                                ) : matchesExpected ? (
+                                    <button
+                                        onClick={() => addItineraryToTrip(messageIndex)}
+                                        className="flex items-center gap-1 text-xs bg-orange-600 hover:bg-orange-500 text-white px-3 py-1.5 rounded-lg transition-colors font-medium"
+                                    >
+                                        <Plus size={12} />
+                                        Use This Itinerary
+                                    </button>
+                                ) : (
+                                    <span className="text-xs text-red-400/80 italic">
+                                        Ask for a {expectedDays}-day itinerary
+                                    </span>
+                                )}
                             </div>
-                            {activeChat.tripContext?.itineraryBreakdown && activeChat.tripContext.itineraryBreakdown.length > 0 ? (
-                                <span className="flex items-center gap-1 text-xs bg-green-600/30 text-green-400 px-2 py-1 rounded">
-                                    <Check size={12} />
-                                    Added to Trip
-                                </span>
-                            ) : (
-                                <button
-                                    onClick={() => addItineraryToTrip(messageIndex)}
-                                    className="flex items-center gap-1 text-xs bg-orange-600 hover:bg-orange-500 text-white px-3 py-1.5 rounded-lg transition-colors font-medium"
-                                >
-                                    <Plus size={12} />
-                                    Use This Itinerary
-                                </button>
+                            {!matchesExpected && expectedDays > 0 && (
+                                <p className="text-xs text-red-400/70 mb-2">
+                                    Your trip is {expectedDays} days. Ask Sierra to adjust the itinerary to match.
+                                </p>
                             )}
+                            <div className="flex flex-wrap gap-1.5">
+                                {extractedItinerary.stops.slice(0, 6).map((stop, idx) => (
+                                    <span
+                                        key={idx}
+                                        className="text-[11px] bg-stone-800/80 text-stone-300 px-2 py-0.5 rounded flex items-center gap-1"
+                                    >
+                                        <MapPin size={10} className={matchesExpected ? "text-orange-400" : "text-red-400"} />
+                                        {stop.location}
+                                        <span className="text-stone-500">({stop.days}d)</span>
+                                    </span>
+                                ))}
+                                {extractedItinerary.stops.length > 6 && (
+                                    <span className="text-[11px] text-stone-500 px-2 py-0.5">
+                                        +{extractedItinerary.stops.length - 6} more
+                                    </span>
+                                )}
+                            </div>
                         </div>
-                        <div className="flex flex-wrap gap-1.5">
-                            {activeChat.extractedItineraries[messageIndex].stops.slice(0, 6).map((stop, idx) => (
-                                <span
-                                    key={idx}
-                                    className="text-[11px] bg-stone-800/80 text-stone-300 px-2 py-0.5 rounded flex items-center gap-1"
-                                >
-                                    <MapPin size={10} className="text-orange-400" />
-                                    {stop.location}
-                                    <span className="text-stone-500">({stop.days}d)</span>
-                                </span>
-                            ))}
-                            {activeChat.extractedItineraries[messageIndex].stops.length > 6 && (
-                                <span className="text-[11px] text-stone-500 px-2 py-0.5">
-                                    +{activeChat.extractedItineraries[messageIndex].stops.length - 6} more
-                                </span>
-                            )}
-                        </div>
-                    </div>
-                )}
+                    );
+                })()}
             </>
         );
     };
@@ -1134,7 +1163,7 @@ export default function ChatInterface() {
                 extractCostsFromMessage(fullResponse, assistantMsgIdx, chatId, destination, tripDays);
                 // Extract itinerary if the response looks like it might contain one
                 if (fullResponse.toLowerCase().includes('day') && (fullResponse.includes(':') || fullResponse.includes('-'))) {
-                    extractItineraryFromMessage(fullResponse, assistantMsgIdx, chatId, destination);
+                    extractItineraryFromMessage(fullResponse, assistantMsgIdx, chatId, destination, tripDays);
                 }
                 // Extract conversation variables from the exchange
                 extractConversationVariables(userMsgContent, fullResponse, chatId, destination);

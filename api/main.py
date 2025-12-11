@@ -2226,12 +2226,14 @@ class ExtractedItineraryStop(BaseModel):
 class ExtractItineraryRequest(BaseModel):
     response_text: str
     destination: str
+    expected_days: int = 0  # Trip duration from trip context (0 = no constraint)
 
 
 class ExtractItineraryResponse(BaseModel):
     itinerary: list[ExtractedItineraryStop]
     total_days: int
     has_itinerary: bool = False
+    matches_expected_days: bool = True  # Whether extracted days match expected trip length
 
 
 ITINERARY_EXTRACTION_PROMPT = """Analyze this travel response and extract any itinerary/travel plan mentioned.
@@ -2319,19 +2321,28 @@ async def extract_itinerary(request: ExtractItineraryRequest):
         total_days = sum(stop.days for stop in itinerary)
         has_itinerary = len(itinerary) >= 2  # Need at least 2 stops for a real itinerary
 
-        logging.info(f"[Itinerary Extraction] Found {len(itinerary)} stops, {total_days} total days")
+        # Check if extracted days match expected trip length
+        # Allow 0 expected_days to mean "no constraint"
+        matches_expected = True
+        if request.expected_days > 0 and has_itinerary:
+            matches_expected = total_days == request.expected_days
+            if not matches_expected:
+                logging.warning(f"[Itinerary Extraction] Day count mismatch: extracted {total_days} days, expected {request.expected_days} days")
+
+        logging.info(f"[Itinerary Extraction] Found {len(itinerary)} stops, {total_days} total days (expected: {request.expected_days}, matches: {matches_expected})")
         return ExtractItineraryResponse(
             itinerary=itinerary,
             total_days=total_days,
-            has_itinerary=has_itinerary
+            has_itinerary=has_itinerary,
+            matches_expected_days=matches_expected
         )
 
     except json.JSONDecodeError as e:
         logging.error(f"[Itinerary Extraction] Failed to parse response: {e}")
-        return ExtractItineraryResponse(itinerary=[], total_days=0, has_itinerary=False)
+        return ExtractItineraryResponse(itinerary=[], total_days=0, has_itinerary=False, matches_expected_days=True)
     except Exception as e:
         logging.error(f"[Itinerary Extraction] Failed: {e}")
-        return ExtractItineraryResponse(itinerary=[], total_days=0, has_itinerary=False)
+        return ExtractItineraryResponse(itinerary=[], total_days=0, has_itinerary=False, matches_expected_days=True)
 
 
 CONVERSATION_VARS_PROMPT = """Analyze this travel conversation exchange and extract key variables that should be remembered for personalizing future responses.

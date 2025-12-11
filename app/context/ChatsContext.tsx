@@ -131,6 +131,7 @@ export interface ExtractedItinerary {
   stops: ItineraryStop[];
   totalDays: number;
   hasItinerary: boolean;
+  matchesExpectedDays: boolean; // Whether extracted days match the trip duration from trip context
 }
 
 // Maps message index -> extracted itinerary for that message

@@ -1155,6 +1155,17 @@ export default function ChatInterface() {
             } : null,
         };
 
+        // Log the full request body for debugging (visible in browser console)
+        console.log('='.repeat(80));
+        console.log('[CHAT REQUEST] Sending to API:');
+        console.log('Destination:', requestBody.destination);
+        console.log('Budget:', requestBody.budget);
+        console.log('User Profile:', requestBody.user_profile);
+        console.log('Trip Context:', requestBody.trip_context);
+        console.log('Conversation Variables:', requestBody.conversation_variables);
+        console.log('Full Request Body:', JSON.stringify(requestBody, null, 2));
+        console.log('='.repeat(80));
+
         // Capture user message for extraction after response
         const userMsgContent = userMsg.content;
 

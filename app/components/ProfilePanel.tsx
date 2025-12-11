@@ -1,9 +1,11 @@
 "use client";
 
 import { useState, useRef, useEffect } from 'react';
-import { X, User, MapPin, Heart, AlertCircle, Compass, Plus, ChevronDown, ChevronRight, Backpack, DollarSign, Shield, Camera, Utensils, Gauge, Info } from 'lucide-react';
+import { X, User, MapPin, Heart, AlertCircle, Compass, Plus, ChevronDown, ChevronRight, Backpack, DollarSign, Shield, Camera, Utensils, Gauge, Info, Trash2, Loader2 } from 'lucide-react';
 import { useProfile, UserProfile, ActivityWeighting } from '../context/ProfileContext';
 import { useTranslations } from '../context/LocaleContext';
+import { useAuth } from '../context/AuthContext';
+import { useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import clsx from 'clsx';
 
@@ -315,7 +317,9 @@ function AutocompleteInput({ value, onChange, onSelect, suggestions, placeholder
 }
 
 export default function ProfilePanel({ isOpen, onClose }: ProfilePanelProps) {
-  const { profile, updateProfile } = useProfile();
+  const { profile, updateProfile, clearProfile } = useProfile();
+  const { logout } = useAuth();
+  const router = useRouter();
   const t = useTranslations('profile');
   const tAuth = useTranslations('auth');
 
@@ -330,6 +334,43 @@ export default function ProfilePanel({ isOpen, onClose }: ProfilePanelProps) {
   const [interestInput, setInterestInput] = useState('');
   const [restrictionInput, setRestrictionInput] = useState('');
   const [localBudget, setLocalBudget] = useState(String(profile.monthlyBudget || 1500));
+
+  // Delete account state
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [deleteConfirmText, setDeleteConfirmText] = useState('');
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState('');
+
+  const handleDeleteAccount = async () => {
+    if (deleteConfirmText !== 'DELETE') return;
+
+    setIsDeleting(true);
+    setDeleteError('');
+
+    try {
+      const response = await fetch('/api/account', {
+        method: 'DELETE',
+      });
+
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error || 'Failed to delete account');
+      }
+
+      // Clear local profile data
+      clearProfile();
+
+      // Log out the user
+      await logout();
+
+      // Redirect to home page
+      router.push('/');
+    } catch (error) {
+      console.error('Delete account error:', error);
+      setDeleteError(error instanceof Error ? error.message : 'Failed to delete account');
+      setIsDeleting(false);
+    }
+  };
 
   // Sync local state with profile when panel opens
   useEffect(() => {
@@ -468,16 +509,7 @@ export default function ProfilePanel({ isOpen, onClose }: ProfilePanelProps) {
                     )}
                   </div>
 
-                  <div>
-                    <label className="text-xs text-stone-400 uppercase font-bold">{t('travelStyle')}</label>
-                    <EnumSelector
-                      value={profile.travelStyle}
-                      onChange={(v) => updateProfile({ travelStyle: v })}
-                      options={['solo', 'couple', 'group', 'family']}
-                      labels={{ solo: t('solo'), couple: t('couple'), group: t('group'), family: t('family') }}
-                    />
                   </div>
-                </div>
               </Section>
 
               {/* TRAVEL PREFERENCES */}
@@ -780,6 +812,89 @@ export default function ProfilePanel({ isOpen, onClose }: ProfilePanelProps) {
                 <p className="text-xs text-orange-200">
                   {t('profileNote')}
                 </p>
+              </div>
+
+              {/* Delete Account Section */}
+              <div className="mt-8 pt-6 border-t border-stone-700">
+                {!showDeleteConfirm ? (
+                  <button
+                    onClick={() => setShowDeleteConfirm(true)}
+                    className="flex items-center gap-2 text-xs text-stone-500 hover:text-red-400 transition-colors"
+                  >
+                    <Trash2 size={14} />
+                    Delete Account
+                  </button>
+                ) : (
+                  <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-4">
+                    <div className="flex items-start gap-3 mb-3">
+                      <AlertCircle size={20} className="text-red-400 flex-shrink-0 mt-0.5" />
+                      <div>
+                        <h4 className="text-red-400 font-semibold text-sm mb-1">Delete Your Account?</h4>
+                        <p className="text-xs text-stone-400">
+                          This action is permanent and cannot be undone. All your data will be deleted, including:
+                        </p>
+                        <ul className="text-xs text-stone-400 mt-2 space-y-1 list-disc list-inside">
+                          <li>Your traveler profile</li>
+                          <li>All saved trips and itineraries</li>
+                          <li>Chat history and recommendations</li>
+                          <li>Budget tracking data</li>
+                          <li>Map pins and routes</li>
+                        </ul>
+                      </div>
+                    </div>
+
+                    {deleteError && (
+                      <div className="mb-3 p-2 bg-red-500/20 border border-red-500/40 rounded text-xs text-red-300">
+                        {deleteError}
+                      </div>
+                    )}
+
+                    <div className="mb-3">
+                      <label className="block text-xs text-stone-400 mb-1">
+                        Type <span className="font-mono text-red-400">DELETE</span> to confirm:
+                      </label>
+                      <input
+                        type="text"
+                        value={deleteConfirmText}
+                        onChange={(e) => setDeleteConfirmText(e.target.value)}
+                        placeholder="DELETE"
+                        className="w-full bg-stone-800 border border-stone-600 rounded px-3 py-2 text-sm focus:outline-none focus:border-red-500"
+                        disabled={isDeleting}
+                      />
+                    </div>
+
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => {
+                          setShowDeleteConfirm(false);
+                          setDeleteConfirmText('');
+                          setDeleteError('');
+                        }}
+                        disabled={isDeleting}
+                        className="flex-1 px-3 py-2 bg-stone-700 hover:bg-stone-600 rounded text-sm transition-colors disabled:opacity-50"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        onClick={handleDeleteAccount}
+                        disabled={deleteConfirmText !== 'DELETE' || isDeleting}
+                        className="flex-1 px-3 py-2 bg-red-600 hover:bg-red-500 disabled:bg-stone-600 disabled:cursor-not-allowed rounded text-sm transition-colors flex items-center justify-center gap-2"
+                      >
+                        {isDeleting ? (
+                          <>
+                            <Loader2 size={14} className="animate-spin" />
+                            Deleting...
+                          </>
+                        ) : (
+                          <>
+                            <Trash2 size={14} />
+                            Delete Account
+                          </>
+                        )}
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
           </motion.div>

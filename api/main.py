@@ -77,8 +77,8 @@ if PINECONE_API_KEY:
 else:
     logging.warning("PINECONE_API_KEY not set. Vector search disabled.")
 
-# LLM
-llm = ChatOpenAI(model="gpt-4o-mini", temperature=0.7)
+# LLM - Using GPT-4o for high-quality responses
+llm = ChatOpenAI(model="gpt-4o", temperature=0.7)
 
 # Perplexity API for web search
 PERPLEXITY_API_KEY = os.getenv("PERPLEXITY_API_KEY")
@@ -133,48 +133,72 @@ async def search_perplexity(query: str, destination: str) -> str:
 BASE_SYSTEM_TEMPLATE = """You are Sierra, a seasoned adventure traveler at The Broke Backpacker.
 You are an adventurous, raw, and honest traveler who has been on the road for over a decade.
 You hate tourist traps and love getting off the beaten path.
-You speak in a friendly, casual tone - like chatting with a well-traveled friend. Keep it natural and relaxed, but avoid overusing slang or catchphrases.
+You speak in a friendly, casual tone - like chatting with a well-traveled friend.
 You are NOT a robot. You are a seasoned backpacker helping someone plan their trip.
 
-IMPORTANT: Do NOT use emojis in your responses. Keep your text clean and professional.
+IMPORTANT: Do NOT use emojis in your responses.
 
-TRIP CONTEXT:
+=== HARD CONSTRAINTS (always respect these) ===
+- Trip Duration: {duration} days
+- Start Date: {start_date}
+- Daily Budget: ${daily_budget}/day
+- Budget Style: {budget}
+- Travel Pace: {travel_pace}
+- Deal Breakers: {deal_breakers}
+- Restrictions: {restrictions}
+
+=== DESTINATION & ITINERARY ===
 Destination: {destination}
-Budget Style: {budget}
+Planned Stops: {planned_itinerary}
+Trip Goals: {trip_goals}
+Visa Requirements: {visa_requirements}
+
+=== TRAVELER PROFILE ===
 {user_profile_section}
-{trip_context_section}
+
+=== LEARNED FROM OUR CONVERSATION ===
 {conversation_variables_section}
-CONTEXT FROM THE BROKE BACKPACKER (your primary source):
+
+=== REFERENCE MATERIAL ===
+The Broke Backpacker Articles:
 {context}
 
-CURRENT WEB INFO (from recent searches - use for up-to-date prices, visa rules, etc.):
+Current Web Info:
 {web_context}
 
-INSTRUCTIONS:
-1. Answer the user's question using the provided CONTEXT from The Broke Backpacker articles.
-2. If the context contains specific recommendations (hostels, gear, tours), YOU MUST mention them.
-3. IMPORTANT: If the context contains an affiliate link for a recommendation (format: [Link Text](URL)), you MUST include it in your response exactly as is. Do not generate generic links.
-4. If you don't know the answer based on the context, say so honestly, but offer some general backpacking wisdom.
-5. Keep it punchy and engaging.
-6. PERSONALIZATION IS KEY - If a user profile is provided:
-   - Use their name naturally in conversation
-   - Reference places they've been when relevant ("Since you've been to Thailand, you'll find...")
-   - Respect their restrictions and deal breakers absolutely
-   - Tailor recommendations to their activity preferences and travel style
-   - Consider their risk tolerance, comfort level, and budget constraints
-   - If they have female traveler concerns, proactively mention safety tips
-   - If they're into content creation, suggest photogenic spots and timing
-7. If trip context is provided:
-   - Consider their specific itinerary stops when giving advice
-   - Respect their transportation and accommodation preferences
-   - Keep their trip goals in mind (surfing, nightlife, culture, etc.)
-   - Honor any deal breakers they've specified
-8. BUDGET CALCULATIONS - When providing budget breakdowns:
-   - ALWAYS use the full trip duration (check "Duration: X days" in TRIP CONTEXT)
-   - Calculate ALL recurring costs (food, transport) for the ENTIRE trip, not just per month
-   - Example: 90-day trip with $10/day food = $10 x 90 = $900, NOT $10 x 30 = $300
-   - Show the grand total that covers the FULL trip duration
-   - Double-check your math before presenting totals
+=== RESPONSE RULES ===
+
+BEFORE answering, silently verify:
+- Does my suggestion fit within {duration} days?
+- Does this match their ${daily_budget}/day budget?
+- Am I respecting their deal breakers: {deal_breakers}?
+- Am I respecting their restrictions: {restrictions}?
+
+WHEN suggesting itineraries:
+- ALWAYS match the exact trip duration: {duration} days
+- Account for travel days between locations
+- Don't cram too much in - respect their travel pace: {travel_pace}
+- If they haven't specified dates for stops, suggest realistic day splits
+- Reference their planned stops when they exist: {planned_itinerary}
+
+WHEN recommending places/activities:
+- Match their activity weightings (party/nature/culture/adventure/relaxation)
+- NEVER suggest anything in their deal breakers: {deal_breakers}
+- Prioritize based on their trip goals: {trip_goals}
+- Reference specific hostels, tours, or gear from TBB context when available
+- Include affiliate links exactly as provided in the context
+
+WHEN discussing budget:
+- Calculate using TOTAL trip duration: {duration} days
+- Use their daily budget: ${daily_budget} as the benchmark
+- Total trip budget = {duration} x ${daily_budget} = ${total_budget}
+- Be honest if something doesn't fit their budget style: {budget}
+
+TONE:
+- Use their name naturally
+- Reference places they've been when relevant
+- Keep it punchy, not a wall of text
+- If unsure about something, say so - then offer your best backpacker wisdom
 """
 
 
@@ -576,6 +600,66 @@ def build_conversation_variables_section(conv_vars: Optional[ConversationVarsInp
     return "\n".join(sections)
 
 
+def extract_hard_constraints(profile: Optional[UserProfile], trip: Optional[TripContext]) -> dict:
+    """Extract hard constraints for the new prompt format."""
+    constraints = {
+        "duration": trip.trip_duration_days if trip else 14,
+        "start_date": trip.start_date if trip and trip.start_date else "Not specified",
+        "daily_budget": trip.daily_budget_target if trip else 50,
+        "travel_pace": profile.travel_pace if profile else "moderate",
+        "deal_breakers": ", ".join(trip.deal_breakers) if trip and trip.deal_breakers else "None specified",
+        "restrictions": ", ".join(profile.restrictions) if profile and profile.restrictions else "None specified",
+        "planned_itinerary": "",
+        "trip_goals": "",
+        "visa_requirements": "Not specified",
+        "total_budget": 0,
+    }
+
+    # Calculate total budget
+    constraints["total_budget"] = constraints["duration"] * constraints["daily_budget"]
+
+    # Format itinerary
+    if trip and trip.itinerary_breakdown:
+        stops = [f"{stop.location} ({stop.days} days)" for stop in trip.itinerary_breakdown]
+        constraints["planned_itinerary"] = " → ".join(stops)
+    else:
+        constraints["planned_itinerary"] = "No specific stops planned"
+
+    # Format trip goals
+    if trip and trip.trip_goals:
+        goal_labels = {
+            'surf_progression': 'Surf Progression',
+            'volunteering': 'Volunteering',
+            'trekking_altitude': 'Trekking/Altitude',
+            'remote_work': 'Remote Work',
+            'nightlife': 'Nightlife',
+            'cultural_immersion': 'Cultural Immersion',
+            'dating_forward': 'Meeting People',
+            'cheap_adventure': 'Cheap Adventure',
+            'photography': 'Photography',
+            'food_mission': 'Food Mission',
+            'spiritual_journey': 'Spiritual Journey',
+            'language_learning': 'Language Learning',
+        }
+        goals = [goal_labels.get(g, g.replace('_', ' ').title()) for g in trip.trip_goals]
+        if trip.custom_goals:
+            goals.extend(trip.custom_goals)
+        constraints["trip_goals"] = ", ".join(goals)
+    else:
+        constraints["trip_goals"] = "General exploration"
+
+    # Visa requirements
+    if trip and trip.needs_visa:
+        visa_info = "Visa required"
+        if trip.visa_on_arrival:
+            visa_info += " (VOA available)"
+        if trip.visa_notes:
+            visa_info += f" - {trip.visa_notes}"
+        constraints["visa_requirements"] = visa_info
+
+    return constraints
+
+
 @app.post("/api/chat")
 async def chat(request: ChatRequest):
     """Non-streaming chat endpoint (kept for backwards compatibility)."""
@@ -590,8 +674,10 @@ async def chat(request: ChatRequest):
             chat_history.append(AIMessage(content=msg["content"]))
 
     user_profile_section = build_profile_section(request.user_profile)
-    trip_context_section = build_trip_context_section(request.trip_context, request.user_profile)
     conversation_variables_section = build_conversation_variables_section(request.conversation_variables)
+
+    # Extract hard constraints
+    constraints = extract_hard_constraints(request.user_profile, request.trip_context)
 
     # Get vector store context (if available)
     context = ""
@@ -634,10 +720,21 @@ async def chat(request: ChatRequest):
         "chat_history": chat_history,
         "destination": request.destination,
         "budget": request.budget,
+        # Hard constraints
+        "duration": constraints["duration"],
+        "start_date": constraints["start_date"],
+        "daily_budget": constraints["daily_budget"],
+        "total_budget": constraints["total_budget"],
+        "travel_pace": constraints["travel_pace"],
+        "deal_breakers": constraints["deal_breakers"],
+        "restrictions": constraints["restrictions"],
+        "planned_itinerary": constraints["planned_itinerary"],
+        "trip_goals": constraints["trip_goals"],
+        "visa_requirements": constraints["visa_requirements"],
+        # Profile and conversation context
         "user_profile_section": user_profile_section,
-        "trip_context_section": trip_context_section,
         "conversation_variables_section": conversation_variables_section,
-        "context": context,
+        "context": context or "No TBB articles available for this query.",
         "web_context": web_context or "No current web data available.",
     })
 
@@ -659,8 +756,10 @@ async def chat_stream(request: ChatRequest):
                     chat_history.append(AIMessage(content=msg["content"]))
 
             user_profile_section = build_profile_section(request.user_profile)
-            trip_context_section = build_trip_context_section(request.trip_context, request.user_profile)
             conversation_variables_section = build_conversation_variables_section(request.conversation_variables)
+
+            # Extract hard constraints
+            constraints = extract_hard_constraints(request.user_profile, request.trip_context)
 
             # Get vector store context (if available)
             context = ""
@@ -703,16 +802,35 @@ async def chat_stream(request: ChatRequest):
                 chat_history=chat_history,
                 destination=request.destination,
                 budget=request.budget,
+                # Hard constraints
+                duration=constraints["duration"],
+                start_date=constraints["start_date"],
+                daily_budget=constraints["daily_budget"],
+                total_budget=constraints["total_budget"],
+                travel_pace=constraints["travel_pace"],
+                deal_breakers=constraints["deal_breakers"],
+                restrictions=constraints["restrictions"],
+                planned_itinerary=constraints["planned_itinerary"],
+                trip_goals=constraints["trip_goals"],
+                visa_requirements=constraints["visa_requirements"],
+                # Profile and conversation context
                 user_profile_section=user_profile_section,
-                trip_context_section=trip_context_section,
                 conversation_variables_section=conversation_variables_section,
-                context=context,
+                context=context or "No TBB articles available for this query.",
                 web_context=web_context or "No current web data available.",
             )
 
+            # Log the complete system prompt for debugging
+            system_message = messages[0].content if messages else "No system message"
+            logging.info("=" * 80)
+            logging.info("[SYSTEM PROMPT START]")
+            logging.info(system_message)
+            logging.info("[SYSTEM PROMPT END]")
+            logging.info("=" * 80)
+
             # Stream the response
             logging.info("[Stream] Starting LLM streaming...")
-            streaming_llm = ChatOpenAI(model="gpt-4o-mini", temperature=0.7, streaming=True)
+            streaming_llm = ChatOpenAI(model="gpt-4o", temperature=0.7, streaming=True)
 
             async for chunk in streaming_llm.astream(messages):
                 if chunk.content:

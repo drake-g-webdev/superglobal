@@ -85,8 +85,13 @@ export default function SignupPage() {
   const [name, setName] = useState('');
   const [countryOfOrigin, setCountryOfOrigin] = useState('');
   const [passportCountry, setPassportCountry] = useState('');
-  const [travelStyle, setTravelStyle] = useState<UserProfile['travelStyle']>('solo');
   const [budgetPreference, setBudgetPreference] = useState<UserProfile['budgetPreference']>('broke-backpacker');
+
+  // Step 4: Additional profile fields (travel preferences)
+  const [riskTolerance, setRiskTolerance] = useState<'low' | 'medium' | 'high'>('medium');
+  const [comfortThreshold, setComfortThreshold] = useState<'hotels' | 'hostels' | 'tents' | 'van' | 'couchsurfing'>('hostels');
+  const [travelPace, setTravelPace] = useState<'slow' | 'moderate' | 'fast'>('moderate');
+  const [foodPreference, setFoodPreference] = useState<'street_food' | 'restaurants' | 'cooking' | 'mixed'>('street_food');
 
   const [showOriginSuggestions, setShowOriginSuggestions] = useState(false);
   const [showPassportSuggestions, setShowPassportSuggestions] = useState(false);
@@ -155,8 +160,13 @@ export default function SignupPage() {
     e.preventDefault();
     setError('');
 
-    if (!validateStep3()) return;
+    if (step === 3) {
+      if (!validateStep3()) return;
+      setStep(4); // Move to step 4 for travel preferences
+      return;
+    }
 
+    // Step 4 - final submission
     setIsLoading(true);
 
     try {
@@ -168,13 +178,35 @@ export default function SignupPage() {
         return;
       }
 
-      // Save profile data
-      updateProfile({
+      // Build full profile data for both local and database
+      const fullProfileData = {
         name,
         countryOfOrigin,
         passportCountry,
-        travelStyle,
         budgetPreference,
+        riskTolerance,
+        comfortThreshold,
+        travelPace,
+        foodPreference,
+      };
+
+      // Save profile data to local state
+      updateProfile(fullProfileData);
+
+      // Sync profile to database immediately (don't wait for debounce)
+      await fetch('/api/profile', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name,
+          countryOfOrigin,
+          passportCountry,
+          budgetStyle: budgetPreference,
+          riskTolerance,
+          comfortThreshold: [comfortThreshold],
+          travelPace,
+          foodPreference,
+        }),
       });
 
       // Mark profile as complete
@@ -201,21 +233,26 @@ export default function SignupPage() {
           <p className="text-stone-400 mt-2">Create your account</p>
         </div>
 
-        {/* Progress indicator - 3 steps */}
+        {/* Progress indicator - 4 steps */}
         <div className="flex items-center justify-center gap-2 mb-6">
           <div className={clsx(
             "w-3 h-3 rounded-full transition-colors",
             step >= 1 ? "bg-orange-500" : "bg-stone-700"
           )} />
-          <div className="w-8 h-0.5 bg-stone-700" />
+          <div className="w-6 h-0.5 bg-stone-700" />
           <div className={clsx(
             "w-3 h-3 rounded-full transition-colors",
             step >= 2 ? "bg-orange-500" : "bg-stone-700"
           )} />
-          <div className="w-8 h-0.5 bg-stone-700" />
+          <div className="w-6 h-0.5 bg-stone-700" />
           <div className={clsx(
             "w-3 h-3 rounded-full transition-colors",
             step >= 3 ? "bg-orange-500" : "bg-stone-700"
+          )} />
+          <div className="w-6 h-0.5 bg-stone-700" />
+          <div className={clsx(
+            "w-3 h-3 rounded-full transition-colors",
+            step >= 4 ? "bg-orange-500" : "bg-stone-700"
           )} />
         </div>
 
@@ -228,7 +265,7 @@ export default function SignupPage() {
             </div>
           )}
 
-          <form onSubmit={step === 3 ? handleSubmit : (e) => { e.preventDefault(); handleNextStep(); }}>
+          <form onSubmit={(step === 3 || step === 4) ? handleSubmit : (e) => { e.preventDefault(); handleNextStep(); }}>
             {step === 1 ? (
               <>
                 <h2 className="text-lg font-semibold mb-4">Account Details</h2>
@@ -363,7 +400,7 @@ export default function SignupPage() {
                   Next <ChevronRight size={18} />
                 </button>
               </>
-            ) : (
+            ) : step === 3 ? (
               <>
                 <div className="flex items-center justify-between mb-4">
                   <button
@@ -462,27 +499,6 @@ export default function SignupPage() {
                   </div>
 
                   <div>
-                    <label className="block text-xs text-stone-400 uppercase font-bold mb-2">{tProfile('travelStyle')} *</label>
-                    <div className="grid grid-cols-2 gap-2">
-                      {(['solo', 'couple', 'group', 'family'] as const).map(style => (
-                        <button
-                          key={style}
-                          type="button"
-                          onClick={() => setTravelStyle(style)}
-                          className={clsx(
-                            "px-4 py-2 rounded-lg text-sm font-medium transition-colors border",
-                            travelStyle === style
-                              ? "bg-orange-600 border-orange-500 text-white"
-                              : "bg-stone-700 border-stone-600 hover:border-stone-500"
-                          )}
-                        >
-                          {tProfile(style)}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-
-                  <div>
                     <label className="block text-xs text-stone-400 uppercase font-bold mb-2">{tProfile('budgetStyle')} *</label>
                     <div className="grid grid-cols-1 gap-2">
                       {([
@@ -511,6 +527,135 @@ export default function SignupPage() {
                             </Tooltip>
                           </button>
                         </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+
+                <button
+                  type="submit"
+                  className="w-full mt-6 bg-orange-600 hover:bg-orange-500 text-white rounded-lg py-3 font-medium transition-colors flex items-center justify-center gap-2"
+                >
+                  Next <ChevronRight size={18} />
+                </button>
+              </>
+            ) : (
+              <>
+                <div className="flex items-center justify-between mb-4">
+                  <button
+                    type="button"
+                    onClick={() => setStep(3)}
+                    className="text-stone-400 hover:text-white transition-colors flex items-center gap-1"
+                  >
+                    <ChevronLeft size={18} /> Back
+                  </button>
+                  <h2 className="text-lg font-semibold">{tProfile('travelPreferences')}</h2>
+                  <div className="w-16" />
+                </div>
+
+                <p className="text-sm text-stone-400 mb-4">
+                  Tell us how you like to travel so we can personalize your experience.
+                </p>
+
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-xs text-stone-400 uppercase font-bold mb-2">{tProfile('riskTolerance')}</label>
+                    <div className="grid grid-cols-3 gap-2">
+                      {([
+                        { value: 'low' as const, label: '🛡️ Safe', desc: 'Tourist areas' },
+                        { value: 'medium' as const, label: '⚖️ Balanced', desc: 'Some adventure' },
+                        { value: 'high' as const, label: '🔥 Send it', desc: 'Off the grid' },
+                      ]).map(opt => (
+                        <button
+                          key={opt.value}
+                          type="button"
+                          onClick={() => setRiskTolerance(opt.value)}
+                          className={clsx(
+                            "px-3 py-2 rounded-lg text-xs font-medium transition-colors border text-center",
+                            riskTolerance === opt.value
+                              ? "bg-orange-600 border-orange-500 text-white"
+                              : "bg-stone-700 border-stone-600 hover:border-stone-500"
+                          )}
+                        >
+                          <div>{opt.label}</div>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs text-stone-400 uppercase font-bold mb-2">{tProfile('comfortThreshold')}</label>
+                    <div className="grid grid-cols-2 gap-2">
+                      {([
+                        { value: 'hotels' as const, label: '🏨 Hotels' },
+                        { value: 'hostels' as const, label: '🛏️ Hostels' },
+                        { value: 'tents' as const, label: '⛺ Camping' },
+                        { value: 'couchsurfing' as const, label: '🛋️ Couchsurf' },
+                      ]).map(opt => (
+                        <button
+                          key={opt.value}
+                          type="button"
+                          onClick={() => setComfortThreshold(opt.value)}
+                          className={clsx(
+                            "px-3 py-2 rounded-lg text-sm font-medium transition-colors border",
+                            comfortThreshold === opt.value
+                              ? "bg-orange-600 border-orange-500 text-white"
+                              : "bg-stone-700 border-stone-600 hover:border-stone-500"
+                          )}
+                        >
+                          {opt.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs text-stone-400 uppercase font-bold mb-2">{tProfile('travelPace')}</label>
+                    <div className="grid grid-cols-3 gap-2">
+                      {([
+                        { value: 'slow' as const, label: '🐢 Slow', desc: '5+ days/place' },
+                        { value: 'moderate' as const, label: '🚶 Moderate', desc: '2-4 days/place' },
+                        { value: 'fast' as const, label: '🏃 Fast', desc: '1-2 days/place' },
+                      ]).map(opt => (
+                        <button
+                          key={opt.value}
+                          type="button"
+                          onClick={() => setTravelPace(opt.value)}
+                          className={clsx(
+                            "px-3 py-2 rounded-lg text-xs font-medium transition-colors border text-center",
+                            travelPace === opt.value
+                              ? "bg-orange-600 border-orange-500 text-white"
+                              : "bg-stone-700 border-stone-600 hover:border-stone-500"
+                          )}
+                        >
+                          <div>{opt.label}</div>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs text-stone-400 uppercase font-bold mb-2">{tProfile('foodPreference')}</label>
+                    <div className="grid grid-cols-2 gap-2">
+                      {([
+                        { value: 'street_food' as const, label: '🍜 Street Food' },
+                        { value: 'restaurants' as const, label: '🍽️ Restaurants' },
+                        { value: 'cooking' as const, label: '🍳 Self Cook' },
+                        { value: 'mixed' as const, label: '🔀 Mixed' },
+                      ]).map(opt => (
+                        <button
+                          key={opt.value}
+                          type="button"
+                          onClick={() => setFoodPreference(opt.value)}
+                          className={clsx(
+                            "px-3 py-2 rounded-lg text-sm font-medium transition-colors border",
+                            foodPreference === opt.value
+                              ? "bg-orange-600 border-orange-500 text-white"
+                              : "bg-stone-700 border-stone-600 hover:border-stone-500"
+                          )}
+                        >
+                          {opt.label}
+                        </button>
                       ))}
                     </div>
                   </div>

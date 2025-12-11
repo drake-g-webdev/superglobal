@@ -67,6 +67,21 @@ export default function AppContent() {
         isOpen={isProfileOpen}
         onClose={() => setIsProfileOpen(false)}
       />
+
+      {/* Footer */}
+      <footer className="w-full max-w-[1600px] py-3 text-center text-stone-500 text-xs">
+        <p>
+          Powered by{' '}
+          <a
+            href="https://www.thebrokebackpacker.com"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-orange-400 hover:text-orange-300"
+          >
+            The Broke Backpacker
+          </a>
+        </p>
+      </footer>
     </main>
   );
 }

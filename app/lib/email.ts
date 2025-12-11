@@ -75,7 +75,7 @@ export function getWelcomeEmailHtml(name: string): string {
                 Welcome, ${name}! Thanks for taking the time to test our site.
               </h2>
               <p style="margin: 0 0 16px; font-size: 16px; line-height: 1.6; color: #d6d3d1;">
-                superglobal is still in the very early stages of development. Please send me an email (drake@superglobal.travel) to detail your experience and what walls you find yourself running into. There are many issues which I am working on fixing, and many which I am not yet aware of -- your feedback is greatly appreciated. 
+                Superglobal is still in the very early stages of development. Please send me an email (drake@superglobal.travel) to detail your experience and what walls you find yourself running into. There are many issues which I am working to fix, and many which I am not yet aware of -- your feedback is greatly appreciated. 
               </p>
             </td>
           </tr>

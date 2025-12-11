@@ -347,6 +347,14 @@ export default function TripSetupWizard({ isOpen, onClose, chatId }: TripSetupWi
     if (step === 0 && !isValidCountry) {
       return;
     }
+
+    // On step 1 (itinerary), auto-save any pending stop before proceeding
+    if (step === 1 && newStop.location.trim()) {
+      // Add the pending stop to itinerary
+      setItinerary(prev => [...prev, { ...newStop, location: newStop.location.trim() }]);
+      setNewStop({ location: '', days: 3, notes: '' });
+    }
+
     if (step < totalSteps - 1) setStep(step + 1);
     else handleSave();
   };
@@ -518,13 +526,18 @@ export default function TripSetupWizard({ isOpen, onClose, chatId }: TripSetupWi
                   className={clsx(
                     "w-full flex items-center justify-center gap-2 py-2.5 rounded-lg text-sm font-medium transition-colors",
                     newStop.location.trim()
-                      ? "bg-orange-600 hover:bg-orange-500 text-white"
-                      : "bg-stone-700 text-stone-400 cursor-not-allowed"
+                      ? "bg-stone-700 hover:bg-stone-600 text-white border border-stone-600"
+                      : "bg-stone-800 text-stone-500 cursor-not-allowed border border-stone-700"
                   )}
                 >
                   <Plus size={16} />
-                  Add to Itinerary
+                  {itinerary.length > 0 ? 'Add Another Stop' : 'Add Stop'}
                 </button>
+                {newStop.location.trim() && (
+                  <p className="text-xs text-stone-500 text-center mt-1">
+                    Or just click Next - your stop will be saved automatically
+                  </p>
+                )}
               </div>
 
               {itinerary.length > 0 && (

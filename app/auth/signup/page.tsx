@@ -3,10 +3,10 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { Mail, Lock, User, MapPin, Loader2, AlertCircle, ChevronRight, ChevronLeft, Key, Globe, Info } from 'lucide-react';
+import { Mail, Lock, User, MapPin, Loader2, AlertCircle, ChevronRight, ChevronLeft, Key, Globe, Info, Compass, Gauge, Utensils, DollarSign, Shield, Camera } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import SpinningGlobe from '../../components/SpinningGlobe';
-import { useProfile, UserProfile } from '../../context/ProfileContext';
+import { useProfile, UserProfile, ActivityWeighting, defaultActivityWeighting } from '../../context/ProfileContext';
 import { useTranslations, useLocale } from '../../context/LocaleContext';
 import clsx from 'clsx';
 
@@ -30,6 +30,51 @@ function Tooltip({ content, children }: { content: string; children: React.React
         </div>
       )}
     </div>
+  );
+}
+
+// Slider component for activity weighting
+function Slider({ value, onChange, label }: { value: number; onChange: (v: number) => void; label: string }) {
+  return (
+    <div className="space-y-1">
+      <div className="flex justify-between text-xs">
+        <span className="text-stone-400">{label}</span>
+        <span className="text-orange-400">{value}%</span>
+      </div>
+      <input
+        type="range"
+        min={0}
+        max={100}
+        value={value}
+        onChange={(e) => onChange(Number(e.target.value))}
+        className="w-full h-2 bg-stone-700 rounded-lg appearance-none cursor-pointer accent-orange-500"
+      />
+    </div>
+  );
+}
+
+// Toggle button component
+function ToggleButton({ value, onChange, label }: { value: boolean; onChange: (v: boolean) => void; label: string }) {
+  return (
+    <button
+      type="button"
+      onClick={() => onChange(!value)}
+      className={clsx(
+        "flex items-center justify-between w-full p-2 rounded-lg text-sm transition-colors",
+        value ? "bg-orange-600/20 border border-orange-500" : "bg-stone-700 border border-stone-600"
+      )}
+    >
+      <span>{label}</span>
+      <div className={clsx(
+        "w-10 h-5 rounded-full transition-colors relative",
+        value ? "bg-orange-500" : "bg-stone-600"
+      )}>
+        <div className={clsx(
+          "absolute top-0.5 w-4 h-4 rounded-full bg-white transition-transform",
+          value ? "translate-x-5" : "translate-x-0.5"
+        )} />
+      </div>
+    </button>
   );
 }
 
@@ -69,7 +114,9 @@ export default function SignupPage() {
   const tProfile = useTranslations('profile');
   const tLanguage = useTranslations('language');
 
+  // Total steps: 1-Account, 2-Language, 3-Basic Info, 4-Travel Prefs, 5-Activity, 6-Food&Gear, 7-Budget, 8-Safety&Content
   const [step, setStep] = useState(1);
+  const totalSteps = 8;
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
 
@@ -79,22 +126,39 @@ export default function SignupPage() {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [masterPassword, setMasterPassword] = useState('');
 
-  // Step 2: Language selection (handled by locale context)
-
-  // Step 3: Required profile fields
+  // Step 3: Basic Info
   const [name, setName] = useState('');
   const [countryOfOrigin, setCountryOfOrigin] = useState('');
   const [passportCountry, setPassportCountry] = useState('');
-  const [budgetPreference, setBudgetPreference] = useState<UserProfile['budgetPreference']>('broke-backpacker');
+  const [showOriginSuggestions, setShowOriginSuggestions] = useState(false);
+  const [showPassportSuggestions, setShowPassportSuggestions] = useState(false);
 
-  // Step 4: Additional profile fields (travel preferences)
+  // Step 4: Travel Preferences
   const [riskTolerance, setRiskTolerance] = useState<'low' | 'medium' | 'high'>('medium');
   const [comfortThreshold, setComfortThreshold] = useState<'hotels' | 'hostels' | 'tents' | 'van' | 'couchsurfing'>('hostels');
   const [travelPace, setTravelPace] = useState<'slow' | 'moderate' | 'fast'>('moderate');
-  const [foodPreference, setFoodPreference] = useState<'street_food' | 'restaurants' | 'cooking' | 'mixed'>('street_food');
 
-  const [showOriginSuggestions, setShowOriginSuggestions] = useState(false);
-  const [showPassportSuggestions, setShowPassportSuggestions] = useState(false);
+  // Step 5: Activity Preferences
+  const [activityWeighting, setActivityWeighting] = useState<ActivityWeighting>(defaultActivityWeighting);
+
+  // Step 6: Food & Gear
+  const [foodPreference, setFoodPreference] = useState<'street_food' | 'restaurants' | 'cooking' | 'mixed'>('street_food');
+  const [packWeight, setPackWeight] = useState<'minimalist' | 'moderate' | 'maximalist'>('moderate');
+  const [electronicsTolerance, setElectronicsTolerance] = useState<'low' | 'medium' | 'high'>('medium');
+
+  // Step 7: Budget & Income
+  const [budgetPreference, setBudgetPreference] = useState<UserProfile['budgetPreference']>('broke-backpacker');
+  const [incomeType, setIncomeType] = useState<'remote_worker' | 'seasonal_worker' | 'savings_only' | 'passive_income'>('savings_only');
+  const [monthlyBudget, setMonthlyBudget] = useState(1500);
+
+  // Step 8: Safety & Content Creation
+  const [walkAtNight, setWalkAtNight] = useState(true);
+  const [experiencedMotos, setExperiencedMotos] = useState(false);
+  const [openToCouchsurfing, setOpenToCouchsurfing] = useState(false);
+  const [femaleTravelerConcerns, setFemaleTravelerConcerns] = useState(false);
+  const [instagramFriendly, setInstagramFriendly] = useState(false);
+  const [hiddenSpots, setHiddenSpots] = useState(true);
+  const [videoFocus, setVideoFocus] = useState(false);
 
   const filteredOriginSuggestions = countryOfOrigin
     ? COUNTRIES.filter(c => c.toLowerCase().includes(countryOfOrigin.toLowerCase())).slice(0, 5)
@@ -109,7 +173,6 @@ export default function SignupPage() {
       setError('All fields are required');
       return false;
     }
-    // Validate master password
     const correctMasterPassword = process.env.NEXT_PUBLIC_MASTER_PASSWORD || 'brokepacker2025';
     if (masterPassword !== correctMasterPassword) {
       setError('Invalid master password');
@@ -148,25 +211,21 @@ export default function SignupPage() {
 
   const handleNextStep = () => {
     setError('');
-    if (step === 1 && validateStep1()) {
-      setStep(2);
-    } else if (step === 2) {
-      // Language selection - just move to next step
-      setStep(3);
-    }
+    if (step === 1 && !validateStep1()) return;
+    if (step === 3 && !validateStep3()) return;
+    setStep(step + 1);
+  };
+
+  const handlePrevStep = () => {
+    setError('');
+    setStep(step - 1);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
 
-    if (step === 3) {
-      if (!validateStep3()) return;
-      setStep(4); // Move to step 4 for travel preferences
-      return;
-    }
-
-    // Step 4 - final submission
+    // Final step - submit everything
     setIsLoading(true);
 
     try {
@@ -178,16 +237,28 @@ export default function SignupPage() {
         return;
       }
 
-      // Build full profile data for both local and database
-      const fullProfileData = {
+      // Build full profile data for local state
+      const fullProfileData: Partial<UserProfile> = {
         name,
         countryOfOrigin,
         passportCountry,
-        budgetPreference,
         riskTolerance,
         comfortThreshold,
         travelPace,
+        activityWeighting,
         foodPreference,
+        packWeight,
+        electronicsTolerance,
+        budgetPreference,
+        incomeType,
+        monthlyBudget,
+        walkAtNight,
+        experiencedMotos,
+        openToCouchsurfing,
+        femaleTravelerConcerns,
+        instagramFriendly,
+        hiddenSpots,
+        videoFocus,
       };
 
       // Save profile data to local state
@@ -196,25 +267,42 @@ export default function SignupPage() {
       // Small delay to ensure session cookies are fully propagated
       await new Promise(resolve => setTimeout(resolve, 500));
 
-      // Sync profile to database with retry logic
-      const profileData = {
+      // Build database profile data (using DB field names)
+      const dbProfileData = {
         name,
         countryOfOrigin,
         passportCountry,
-        budgetStyle: budgetPreference,
         riskTolerance,
         comfortThreshold: [comfortThreshold],
         travelPace,
+        partyWeight: activityWeighting.party,
+        natureWeight: activityWeighting.nature,
+        cultureWeight: activityWeighting.culture,
+        adventureWeight: activityWeighting.adventure,
+        relaxationWeight: activityWeighting.relaxation,
         foodPreference,
+        packWeight,
+        electronicsTolerance,
+        budgetStyle: budgetPreference,
+        incomeType,
+        monthlyBudget,
+        nightWalking: walkAtNight,
+        motorbikeOk: experiencedMotos,
+        couchsurfingOk: openToCouchsurfing,
+        femaleSafety: femaleTravelerConcerns,
+        instagramSpots: instagramFriendly,
+        hiddenGems: hiddenSpots,
+        videoLocations: videoFocus,
       };
 
+      // Sync profile to database with retry logic
       let profileSaved = false;
       for (let attempt = 0; attempt < 3 && !profileSaved; attempt++) {
         try {
           const profileRes = await fetch('/api/profile', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(profileData),
+            body: JSON.stringify(dbProfileData),
           });
 
           if (profileRes.ok) {
@@ -243,7 +331,6 @@ export default function SignupPage() {
       await markProfileComplete();
 
       // Give the session a moment to fully update before navigation
-      console.log('[Signup] Waiting for session to stabilize...');
       await new Promise(resolve => setTimeout(resolve, 300));
 
       // Redirect to main app
@@ -257,43 +344,36 @@ export default function SignupPage() {
     }
   };
 
+  // Render progress dots
+  const renderProgress = () => (
+    <div className="flex items-center justify-center gap-1 mb-6">
+      {Array.from({ length: totalSteps }, (_, i) => (
+        <div key={i} className="flex items-center">
+          <div className={clsx(
+            "w-2.5 h-2.5 rounded-full transition-colors",
+            step > i ? "bg-orange-500" : step === i + 1 ? "bg-orange-500" : "bg-stone-700"
+          )} />
+          {i < totalSteps - 1 && <div className="w-4 h-0.5 bg-stone-700" />}
+        </div>
+      ))}
+    </div>
+  );
+
   return (
     <div className="min-h-screen bg-stone-900 flex items-center justify-center p-4">
       <div className="w-full max-w-md">
         {/* Logo */}
-        <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-20 h-20 mb-4">
-            <SpinningGlobe size={80} />
+        <div className="text-center mb-6">
+          <div className="inline-flex items-center justify-center w-16 h-16 mb-3">
+            <SpinningGlobe size={64} />
           </div>
-          <h1 className="text-2xl font-bold text-white font-mono">superglobal.travel</h1>
-          <p className="text-stone-400 mt-2">Create your account</p>
+          <h1 className="text-xl font-bold text-white font-mono">superglobal.travel</h1>
         </div>
 
-        {/* Progress indicator - 4 steps */}
-        <div className="flex items-center justify-center gap-2 mb-6">
-          <div className={clsx(
-            "w-3 h-3 rounded-full transition-colors",
-            step >= 1 ? "bg-orange-500" : "bg-stone-700"
-          )} />
-          <div className="w-6 h-0.5 bg-stone-700" />
-          <div className={clsx(
-            "w-3 h-3 rounded-full transition-colors",
-            step >= 2 ? "bg-orange-500" : "bg-stone-700"
-          )} />
-          <div className="w-6 h-0.5 bg-stone-700" />
-          <div className={clsx(
-            "w-3 h-3 rounded-full transition-colors",
-            step >= 3 ? "bg-orange-500" : "bg-stone-700"
-          )} />
-          <div className="w-6 h-0.5 bg-stone-700" />
-          <div className={clsx(
-            "w-3 h-3 rounded-full transition-colors",
-            step >= 4 ? "bg-orange-500" : "bg-stone-700"
-          )} />
-        </div>
+        {renderProgress()}
 
         {/* Form */}
-        <div className="bg-stone-800 rounded-2xl p-6 border border-stone-700">
+        <div className="bg-stone-800 rounded-2xl p-5 border border-stone-700 max-h-[70vh] overflow-y-auto">
           {error && (
             <div className="mb-4 p-3 bg-red-500/10 border border-red-500/30 rounded-lg flex items-center gap-2 text-red-400 text-sm">
               <AlertCircle size={16} />
@@ -301,10 +381,15 @@ export default function SignupPage() {
             </div>
           )}
 
-          <form onSubmit={(step === 3 || step === 4) ? handleSubmit : (e) => { e.preventDefault(); handleNextStep(); }}>
-            {step === 1 ? (
+          <form onSubmit={step === totalSteps ? handleSubmit : (e) => { e.preventDefault(); handleNextStep(); }}>
+
+            {/* STEP 1: Account Details */}
+            {step === 1 && (
               <>
-                <h2 className="text-lg font-semibold mb-4">Account Details</h2>
+                <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
+                  <User size={20} className="text-orange-500" />
+                  Account Details
+                </h2>
                 <div className="space-y-4">
                   <div>
                     <label className="block text-xs text-stone-400 uppercase font-bold mb-1">Email</label>
@@ -364,34 +449,27 @@ export default function SignupPage() {
                         required
                       />
                     </div>
-                    <p className="text-xs text-stone-500 mt-1">Required to access the app</p>
+                    <p className="text-xs text-stone-500 mt-1">Required to access the beta</p>
                   </div>
                 </div>
-
-                <button
-                  type="submit"
-                  className="w-full mt-6 bg-orange-600 hover:bg-orange-500 text-white rounded-lg py-3 font-medium transition-colors flex items-center justify-center gap-2"
-                >
-                  Next <ChevronRight size={18} />
-                </button>
               </>
-            ) : step === 2 ? (
+            )}
+
+            {/* STEP 2: Language Selection */}
+            {step === 2 && (
               <>
                 <div className="flex items-center justify-between mb-4">
-                  <button
-                    type="button"
-                    onClick={() => setStep(1)}
-                    className="text-stone-400 hover:text-white transition-colors flex items-center gap-1"
-                  >
+                  <button type="button" onClick={handlePrevStep} className="text-stone-400 hover:text-white transition-colors flex items-center gap-1">
                     <ChevronLeft size={18} /> Back
                   </button>
-                  <h2 className="text-lg font-semibold">{t('selectLanguage')}</h2>
+                  <h2 className="text-lg font-semibold flex items-center gap-2">
+                    <Globe size={20} className="text-orange-500" />
+                    {t('selectLanguage')}
+                  </h2>
                   <div className="w-16" />
                 </div>
 
-                <p className="text-sm text-stone-400 mb-6 text-center">
-                  {t('languageDescription')}
-                </p>
+                <p className="text-sm text-stone-400 mb-6 text-center">{t('languageDescription')}</p>
 
                 <div className="space-y-3">
                   <button
@@ -399,9 +477,7 @@ export default function SignupPage() {
                     onClick={() => setLocale('en')}
                     className={clsx(
                       "w-full px-4 py-4 rounded-lg text-left flex items-center gap-4 border transition-colors",
-                      locale === 'en'
-                        ? "bg-orange-600 border-orange-500 text-white"
-                        : "bg-stone-700 border-stone-600 hover:border-stone-500"
+                      locale === 'en' ? "bg-orange-600 border-orange-500 text-white" : "bg-stone-700 border-stone-600 hover:border-stone-500"
                     )}
                   >
                     <Globe size={24} />
@@ -416,9 +492,7 @@ export default function SignupPage() {
                     onClick={() => setLocale('es')}
                     className={clsx(
                       "w-full px-4 py-4 rounded-lg text-left flex items-center gap-4 border transition-colors",
-                      locale === 'es'
-                        ? "bg-orange-600 border-orange-500 text-white"
-                        : "bg-stone-700 border-stone-600 hover:border-stone-500"
+                      locale === 'es' ? "bg-orange-600 border-orange-500 text-white" : "bg-stone-700 border-stone-600 hover:border-stone-500"
                     )}
                   >
                     <Globe size={24} />
@@ -428,31 +502,22 @@ export default function SignupPage() {
                     </div>
                   </button>
                 </div>
-
-                <button
-                  type="submit"
-                  className="w-full mt-6 bg-orange-600 hover:bg-orange-500 text-white rounded-lg py-3 font-medium transition-colors flex items-center justify-center gap-2"
-                >
-                  Next <ChevronRight size={18} />
-                </button>
               </>
-            ) : step === 3 ? (
+            )}
+
+            {/* STEP 3: Basic Info */}
+            {step === 3 && (
               <>
                 <div className="flex items-center justify-between mb-4">
-                  <button
-                    type="button"
-                    onClick={() => setStep(2)}
-                    className="text-stone-400 hover:text-white transition-colors flex items-center gap-1"
-                  >
+                  <button type="button" onClick={handlePrevStep} className="text-stone-400 hover:text-white transition-colors flex items-center gap-1">
                     <ChevronLeft size={18} /> Back
                   </button>
-                  <h2 className="text-lg font-semibold">{t('yourProfile')}</h2>
+                  <h2 className="text-lg font-semibold flex items-center gap-2">
+                    <User size={20} className="text-orange-500" />
+                    {tProfile('basicInfo')}
+                  </h2>
                   <div className="w-16" />
                 </div>
-
-                <p className="text-sm text-stone-400 mb-4">
-                  {t('profileRequired')}
-                </p>
 
                 <div className="space-y-4">
                   <div>
@@ -488,13 +553,9 @@ export default function SignupPage() {
                     {showOriginSuggestions && filteredOriginSuggestions.length > 0 && (
                       <div className="absolute z-10 w-full mt-1 bg-stone-700 border border-stone-600 rounded-lg shadow-lg max-h-40 overflow-y-auto">
                         {filteredOriginSuggestions.map(country => (
-                          <button
-                            key={country}
-                            type="button"
-                            onMouseDown={(e) => e.preventDefault()}
+                          <button key={country} type="button" onMouseDown={(e) => e.preventDefault()}
                             onClick={() => { setCountryOfOrigin(country); setShowOriginSuggestions(false); }}
-                            className="w-full text-left px-4 py-2 text-sm hover:bg-stone-600"
-                          >
+                            className="w-full text-left px-4 py-2 text-sm hover:bg-stone-600">
                             {country}
                           </button>
                         ))}
@@ -520,100 +581,46 @@ export default function SignupPage() {
                     {showPassportSuggestions && filteredPassportSuggestions.length > 0 && (
                       <div className="absolute z-10 w-full mt-1 bg-stone-700 border border-stone-600 rounded-lg shadow-lg max-h-40 overflow-y-auto">
                         {filteredPassportSuggestions.map(country => (
-                          <button
-                            key={country}
-                            type="button"
-                            onMouseDown={(e) => e.preventDefault()}
+                          <button key={country} type="button" onMouseDown={(e) => e.preventDefault()}
                             onClick={() => { setPassportCountry(country); setShowPassportSuggestions(false); }}
-                            className="w-full text-left px-4 py-2 text-sm hover:bg-stone-600"
-                          >
+                            className="w-full text-left px-4 py-2 text-sm hover:bg-stone-600">
                             {country}
                           </button>
                         ))}
                       </div>
                     )}
                   </div>
-
-                  <div>
-                    <label className="block text-xs text-stone-400 uppercase font-bold mb-2">{tProfile('budgetStyle')} *</label>
-                    <div className="grid grid-cols-1 gap-2">
-                      {([
-                        { value: 'broke-backpacker' as const, label: tProfile('brokeBackpacker'), emoji: '💸', tooltip: t('brokeBackpackerTooltip') },
-                        { value: 'flashpacker' as const, label: tProfile('flashpacker'), emoji: '💳', tooltip: t('flashpackerTooltip') },
-                        { value: 'digital-nomad' as const, label: tProfile('digitalNomad'), emoji: '💻', tooltip: t('digitalNomadTooltip') },
-                      ]).map(opt => (
-                        <div key={opt.value} className="relative">
-                          <button
-                            type="button"
-                            onClick={() => setBudgetPreference(opt.value)}
-                            className={clsx(
-                              "w-full px-4 py-3 rounded-lg text-sm font-medium transition-colors border text-left flex items-center gap-2",
-                              budgetPreference === opt.value
-                                ? "bg-orange-600 border-orange-500 text-white"
-                                : "bg-stone-700 border-stone-600 hover:border-stone-500"
-                            )}
-                          >
-                            <span>{opt.emoji}</span>
-                            <span className="flex-1">{opt.label}</span>
-                            <Tooltip content={opt.tooltip}>
-                              <Info size={16} className={clsx(
-                                "cursor-help",
-                                budgetPreference === opt.value ? "text-white/70" : "text-stone-400"
-                              )} />
-                            </Tooltip>
-                          </button>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
                 </div>
-
-                <button
-                  type="submit"
-                  className="w-full mt-6 bg-orange-600 hover:bg-orange-500 text-white rounded-lg py-3 font-medium transition-colors flex items-center justify-center gap-2"
-                >
-                  Next <ChevronRight size={18} />
-                </button>
               </>
-            ) : (
+            )}
+
+            {/* STEP 4: Travel Preferences */}
+            {step === 4 && (
               <>
                 <div className="flex items-center justify-between mb-4">
-                  <button
-                    type="button"
-                    onClick={() => setStep(3)}
-                    className="text-stone-400 hover:text-white transition-colors flex items-center gap-1"
-                  >
+                  <button type="button" onClick={handlePrevStep} className="text-stone-400 hover:text-white transition-colors flex items-center gap-1">
                     <ChevronLeft size={18} /> Back
                   </button>
-                  <h2 className="text-lg font-semibold">{tProfile('travelPreferences')}</h2>
+                  <h2 className="text-lg font-semibold flex items-center gap-2">
+                    <Compass size={20} className="text-orange-500" />
+                    {tProfile('travelPreferences')}
+                  </h2>
                   <div className="w-16" />
                 </div>
-
-                <p className="text-sm text-stone-400 mb-4">
-                  Tell us how you like to travel so we can personalize your experience.
-                </p>
 
                 <div className="space-y-4">
                   <div>
                     <label className="block text-xs text-stone-400 uppercase font-bold mb-2">{tProfile('riskTolerance')}</label>
                     <div className="grid grid-cols-3 gap-2">
                       {([
-                        { value: 'low' as const, label: '🛡️ Safe', desc: 'Tourist areas' },
-                        { value: 'medium' as const, label: '⚖️ Balanced', desc: 'Some adventure' },
-                        { value: 'high' as const, label: '🔥 Send it', desc: 'Off the grid' },
+                        { value: 'low' as const, label: `🛡️ ${tProfile('playItSafe')}` },
+                        { value: 'medium' as const, label: `⚖️ ${tProfile('balanced')}` },
+                        { value: 'high' as const, label: `🔥 ${tProfile('sendIt')}` },
                       ]).map(opt => (
-                        <button
-                          key={opt.value}
-                          type="button"
-                          onClick={() => setRiskTolerance(opt.value)}
-                          className={clsx(
-                            "px-3 py-2 rounded-lg text-xs font-medium transition-colors border text-center",
-                            riskTolerance === opt.value
-                              ? "bg-orange-600 border-orange-500 text-white"
-                              : "bg-stone-700 border-stone-600 hover:border-stone-500"
-                          )}
-                        >
-                          <div>{opt.label}</div>
+                        <button key={opt.value} type="button" onClick={() => setRiskTolerance(opt.value)}
+                          className={clsx("px-2 py-2 rounded-lg text-xs font-medium transition-colors border text-center",
+                            riskTolerance === opt.value ? "bg-orange-600 border-orange-500 text-white" : "bg-stone-700 border-stone-600 hover:border-stone-500")}>
+                          {opt.label}
                         </button>
                       ))}
                     </div>
@@ -623,22 +630,14 @@ export default function SignupPage() {
                     <label className="block text-xs text-stone-400 uppercase font-bold mb-2">{tProfile('comfortThreshold')}</label>
                     <div className="grid grid-cols-2 gap-2">
                       {([
-                        { value: 'hotels' as const, label: '🏨 Hotels' },
-                        { value: 'hostels' as const, label: '🛏️ Hostels' },
-                        { value: 'tents' as const, label: '⛺ Camping' },
-                        { value: 'couchsurfing' as const, label: '🛋️ Couchsurf' },
+                        { value: 'hotels' as const, label: `🏨 ${tProfile('hotels')}` },
+                        { value: 'hostels' as const, label: `🛏️ ${tProfile('hostels')}` },
+                        { value: 'tents' as const, label: `⛺ ${tProfile('tents')}` },
+                        { value: 'couchsurfing' as const, label: `🛋️ ${tProfile('couchsurfing')}` },
                       ]).map(opt => (
-                        <button
-                          key={opt.value}
-                          type="button"
-                          onClick={() => setComfortThreshold(opt.value)}
-                          className={clsx(
-                            "px-3 py-2 rounded-lg text-sm font-medium transition-colors border",
-                            comfortThreshold === opt.value
-                              ? "bg-orange-600 border-orange-500 text-white"
-                              : "bg-stone-700 border-stone-600 hover:border-stone-500"
-                          )}
-                        >
+                        <button key={opt.value} type="button" onClick={() => setComfortThreshold(opt.value)}
+                          className={clsx("px-3 py-2 rounded-lg text-sm font-medium transition-colors border",
+                            comfortThreshold === opt.value ? "bg-orange-600 border-orange-500 text-white" : "bg-stone-700 border-stone-600 hover:border-stone-500")}>
                           {opt.label}
                         </button>
                       ))}
@@ -649,70 +648,254 @@ export default function SignupPage() {
                     <label className="block text-xs text-stone-400 uppercase font-bold mb-2">{tProfile('travelPace')}</label>
                     <div className="grid grid-cols-3 gap-2">
                       {([
-                        { value: 'slow' as const, label: '🐢 Slow', desc: '5+ days/place' },
-                        { value: 'moderate' as const, label: '🚶 Moderate', desc: '2-4 days/place' },
-                        { value: 'fast' as const, label: '🏃 Fast', desc: '1-2 days/place' },
+                        { value: 'slow' as const, label: `🐢 ${tProfile('slow')}` },
+                        { value: 'moderate' as const, label: `🚶 ${tProfile('moderate')}` },
+                        { value: 'fast' as const, label: `🏃 ${tProfile('fast')}` },
                       ]).map(opt => (
-                        <button
-                          key={opt.value}
-                          type="button"
-                          onClick={() => setTravelPace(opt.value)}
-                          className={clsx(
-                            "px-3 py-2 rounded-lg text-xs font-medium transition-colors border text-center",
-                            travelPace === opt.value
-                              ? "bg-orange-600 border-orange-500 text-white"
-                              : "bg-stone-700 border-stone-600 hover:border-stone-500"
-                          )}
-                        >
-                          <div>{opt.label}</div>
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-
-                  <div>
-                    <label className="block text-xs text-stone-400 uppercase font-bold mb-2">{tProfile('foodPreference')}</label>
-                    <div className="grid grid-cols-2 gap-2">
-                      {([
-                        { value: 'street_food' as const, label: '🍜 Street Food' },
-                        { value: 'restaurants' as const, label: '🍽️ Restaurants' },
-                        { value: 'cooking' as const, label: '🍳 Self Cook' },
-                        { value: 'mixed' as const, label: '🔀 Mixed' },
-                      ]).map(opt => (
-                        <button
-                          key={opt.value}
-                          type="button"
-                          onClick={() => setFoodPreference(opt.value)}
-                          className={clsx(
-                            "px-3 py-2 rounded-lg text-sm font-medium transition-colors border",
-                            foodPreference === opt.value
-                              ? "bg-orange-600 border-orange-500 text-white"
-                              : "bg-stone-700 border-stone-600 hover:border-stone-500"
-                          )}
-                        >
+                        <button key={opt.value} type="button" onClick={() => setTravelPace(opt.value)}
+                          className={clsx("px-2 py-2 rounded-lg text-xs font-medium transition-colors border text-center",
+                            travelPace === opt.value ? "bg-orange-600 border-orange-500 text-white" : "bg-stone-700 border-stone-600 hover:border-stone-500")}>
                           {opt.label}
                         </button>
                       ))}
                     </div>
                   </div>
                 </div>
-
-                <button
-                  type="submit"
-                  disabled={isLoading}
-                  className="w-full mt-6 bg-orange-600 hover:bg-orange-500 disabled:bg-stone-600 text-white rounded-lg py-3 font-medium transition-colors flex items-center justify-center gap-2"
-                >
-                  {isLoading ? (
-                    <>
-                      <Loader2 size={18} className="animate-spin" />
-                      Creating Account...
-                    </>
-                  ) : (
-                    t('createAccount')
-                  )}
-                </button>
               </>
             )}
+
+            {/* STEP 5: Activity Preferences */}
+            {step === 5 && (
+              <>
+                <div className="flex items-center justify-between mb-4">
+                  <button type="button" onClick={handlePrevStep} className="text-stone-400 hover:text-white transition-colors flex items-center gap-1">
+                    <ChevronLeft size={18} /> Back
+                  </button>
+                  <h2 className="text-lg font-semibold flex items-center gap-2">
+                    <Gauge size={20} className="text-orange-500" />
+                    {tProfile('activityPreferences')}
+                  </h2>
+                  <div className="w-16" />
+                </div>
+
+                <p className="text-xs text-stone-500 mb-4">{tProfile('adjustSliders')}</p>
+
+                <div className="space-y-4">
+                  <Slider label={`🎉 ${tProfile('partyNightlife')}`} value={activityWeighting.party}
+                    onChange={(v) => setActivityWeighting(prev => ({ ...prev, party: v }))} />
+                  <Slider label={`🌿 ${tProfile('natureOutdoors')}`} value={activityWeighting.nature}
+                    onChange={(v) => setActivityWeighting(prev => ({ ...prev, nature: v }))} />
+                  <Slider label={`🏛️ ${tProfile('cultureHistory')}`} value={activityWeighting.culture}
+                    onChange={(v) => setActivityWeighting(prev => ({ ...prev, culture: v }))} />
+                  <Slider label={`🧗 ${tProfile('adventureAdrenaline')}`} value={activityWeighting.adventure}
+                    onChange={(v) => setActivityWeighting(prev => ({ ...prev, adventure: v }))} />
+                  <Slider label={`🏖️ ${tProfile('relaxationBeach')}`} value={activityWeighting.relaxation}
+                    onChange={(v) => setActivityWeighting(prev => ({ ...prev, relaxation: v }))} />
+                </div>
+              </>
+            )}
+
+            {/* STEP 6: Food & Gear */}
+            {step === 6 && (
+              <>
+                <div className="flex items-center justify-between mb-4">
+                  <button type="button" onClick={handlePrevStep} className="text-stone-400 hover:text-white transition-colors flex items-center gap-1">
+                    <ChevronLeft size={18} /> Back
+                  </button>
+                  <h2 className="text-lg font-semibold flex items-center gap-2">
+                    <Utensils size={20} className="text-orange-500" />
+                    {tProfile('foodAndGear')}
+                  </h2>
+                  <div className="w-16" />
+                </div>
+
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-xs text-stone-400 uppercase font-bold mb-2">{tProfile('foodPreference')}</label>
+                    <div className="grid grid-cols-2 gap-2">
+                      {([
+                        { value: 'street_food' as const, label: `🍜 ${tProfile('streetFood')}` },
+                        { value: 'restaurants' as const, label: `🍽️ ${tProfile('restaurants')}` },
+                        { value: 'cooking' as const, label: `🍳 ${tProfile('cooking')}` },
+                        { value: 'mixed' as const, label: `🔀 ${tProfile('mixed')}` },
+                      ]).map(opt => (
+                        <button key={opt.value} type="button" onClick={() => setFoodPreference(opt.value)}
+                          className={clsx("px-3 py-2 rounded-lg text-sm font-medium transition-colors border",
+                            foodPreference === opt.value ? "bg-orange-600 border-orange-500 text-white" : "bg-stone-700 border-stone-600 hover:border-stone-500")}>
+                          {opt.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs text-stone-400 uppercase font-bold mb-2">{tProfile('packWeight')}</label>
+                    <div className="grid grid-cols-3 gap-2">
+                      {([
+                        { value: 'minimalist' as const, label: `🎒 ${tProfile('minimalist')}` },
+                        { value: 'moderate' as const, label: `🧳 ${tProfile('moderatePack')}` },
+                        { value: 'maximalist' as const, label: `💼 ${tProfile('maximalist')}` },
+                      ]).map(opt => (
+                        <button key={opt.value} type="button" onClick={() => setPackWeight(opt.value)}
+                          className={clsx("px-2 py-2 rounded-lg text-xs font-medium transition-colors border text-center",
+                            packWeight === opt.value ? "bg-orange-600 border-orange-500 text-white" : "bg-stone-700 border-stone-600 hover:border-stone-500")}>
+                          {opt.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs text-stone-400 uppercase font-bold mb-2">{tProfile('electronicsNeeds')}</label>
+                    <div className="grid grid-cols-3 gap-2">
+                      {([
+                        { value: 'low' as const, label: `📵 ${tProfile('minimal')}` },
+                        { value: 'medium' as const, label: `📱 ${tProfile('phoneLaptop')}` },
+                        { value: 'high' as const, label: `🎬 ${tProfile('creatorKit')}` },
+                      ]).map(opt => (
+                        <button key={opt.value} type="button" onClick={() => setElectronicsTolerance(opt.value)}
+                          className={clsx("px-2 py-2 rounded-lg text-xs font-medium transition-colors border text-center",
+                            electronicsTolerance === opt.value ? "bg-orange-600 border-orange-500 text-white" : "bg-stone-700 border-stone-600 hover:border-stone-500")}>
+                          {opt.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </>
+            )}
+
+            {/* STEP 7: Budget & Income */}
+            {step === 7 && (
+              <>
+                <div className="flex items-center justify-between mb-4">
+                  <button type="button" onClick={handlePrevStep} className="text-stone-400 hover:text-white transition-colors flex items-center gap-1">
+                    <ChevronLeft size={18} /> Back
+                  </button>
+                  <h2 className="text-lg font-semibold flex items-center gap-2">
+                    <DollarSign size={20} className="text-orange-500" />
+                    {tProfile('budgetAndIncome')}
+                  </h2>
+                  <div className="w-16" />
+                </div>
+
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-xs text-stone-400 uppercase font-bold mb-2">{tProfile('budgetStyle')}</label>
+                    <div className="space-y-2">
+                      {([
+                        { value: 'broke-backpacker' as const, label: tProfile('brokeBackpacker'), emoji: '💸', tooltip: t('brokeBackpackerTooltip') },
+                        { value: 'flashpacker' as const, label: tProfile('flashpacker'), emoji: '💳', tooltip: t('flashpackerTooltip') },
+                        { value: 'digital-nomad' as const, label: tProfile('digitalNomad'), emoji: '💻', tooltip: t('digitalNomadTooltip') },
+                      ]).map(opt => (
+                        <button key={opt.value} type="button" onClick={() => setBudgetPreference(opt.value)}
+                          className={clsx("w-full px-3 py-2 rounded-lg text-sm font-medium transition-colors border text-left flex items-center gap-2",
+                            budgetPreference === opt.value ? "bg-orange-600 border-orange-500 text-white" : "bg-stone-700 border-stone-600 hover:border-stone-500")}>
+                          <span>{opt.emoji}</span>
+                          <span className="flex-1">{opt.label}</span>
+                          <Tooltip content={opt.tooltip}>
+                            <Info size={14} className={clsx("cursor-help", budgetPreference === opt.value ? "text-white/70" : "text-stone-400")} />
+                          </Tooltip>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs text-stone-400 uppercase font-bold mb-2">{tProfile('incomeType')}</label>
+                    <div className="grid grid-cols-2 gap-2">
+                      {([
+                        { value: 'remote_worker' as const, label: `💻 ${tProfile('remoteWorker')}` },
+                        { value: 'seasonal_worker' as const, label: `🌾 ${tProfile('seasonalWorker')}` },
+                        { value: 'savings_only' as const, label: `🏦 ${tProfile('savingsOnly')}` },
+                        { value: 'passive_income' as const, label: `📈 ${tProfile('passiveIncome')}` },
+                      ]).map(opt => (
+                        <button key={opt.value} type="button" onClick={() => setIncomeType(opt.value)}
+                          className={clsx("px-2 py-2 rounded-lg text-xs font-medium transition-colors border text-center",
+                            incomeType === opt.value ? "bg-orange-600 border-orange-500 text-white" : "bg-stone-700 border-stone-600 hover:border-stone-500")}>
+                          {opt.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs text-stone-400 uppercase font-bold mb-1">{tProfile('monthlyBudget')}</label>
+                    <input
+                      type="number"
+                      value={monthlyBudget}
+                      onChange={(e) => setMonthlyBudget(parseInt(e.target.value) || 0)}
+                      className="w-full bg-stone-700 border border-stone-600 rounded-lg px-4 py-3 focus:outline-none focus:border-orange-500"
+                    />
+                  </div>
+                </div>
+              </>
+            )}
+
+            {/* STEP 8: Safety & Content Creation */}
+            {step === 8 && (
+              <>
+                <div className="flex items-center justify-between mb-4">
+                  <button type="button" onClick={handlePrevStep} className="text-stone-400 hover:text-white transition-colors flex items-center gap-1">
+                    <ChevronLeft size={18} /> Back
+                  </button>
+                  <h2 className="text-lg font-semibold flex items-center gap-2">
+                    <Shield size={20} className="text-orange-500" />
+                    Safety & Content
+                  </h2>
+                  <div className="w-16" />
+                </div>
+
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-xs text-stone-400 uppercase font-bold mb-2">{tProfile('safetyPreferences')}</label>
+                    <div className="space-y-2">
+                      <ToggleButton value={walkAtNight} onChange={setWalkAtNight} label={tProfile('comfortableNightWalking')} />
+                      <ToggleButton value={experiencedMotos} onChange={setExperiencedMotos} label={tProfile('experiencedMotorbikes')} />
+                      <ToggleButton value={openToCouchsurfing} onChange={setOpenToCouchsurfing} label={tProfile('openToCouchsurfing')} />
+                      <div className="flex items-center gap-2">
+                        <div className="flex-1">
+                          <ToggleButton value={femaleTravelerConcerns} onChange={setFemaleTravelerConcerns} label={tProfile('femaleTravelerConcerns')} />
+                        </div>
+                        <Tooltip content={tProfile('femaleTravelerTooltip')}>
+                          <Info size={16} className="text-stone-400 cursor-help" />
+                        </Tooltip>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs text-stone-400 uppercase font-bold mb-2 flex items-center gap-2">
+                      <Camera size={14} />
+                      {tProfile('contentCreation')}
+                    </label>
+                    <div className="space-y-2">
+                      <ToggleButton value={instagramFriendly} onChange={setInstagramFriendly} label={tProfile('prioritizeInstagram')} />
+                      <ToggleButton value={hiddenSpots} onChange={setHiddenSpots} label={tProfile('showHiddenGems')} />
+                      <ToggleButton value={videoFocus} onChange={setVideoFocus} label={tProfile('focusVideo')} />
+                    </div>
+                  </div>
+                </div>
+              </>
+            )}
+
+            {/* Navigation Buttons */}
+            <button
+              type="submit"
+              disabled={isLoading}
+              className="w-full mt-6 bg-orange-600 hover:bg-orange-500 disabled:bg-stone-600 text-white rounded-lg py-3 font-medium transition-colors flex items-center justify-center gap-2"
+            >
+              {isLoading ? (
+                <>
+                  <Loader2 size={18} className="animate-spin" />
+                  Creating Account...
+                </>
+              ) : step === totalSteps ? (
+                t('createAccount')
+              ) : (
+                <>Next <ChevronRight size={18} /></>
+              )}
+            </button>
           </form>
 
           <p className="text-center text-sm text-stone-400 mt-4">
@@ -726,12 +909,7 @@ export default function SignupPage() {
         {/* Footer */}
         <p className="text-center text-xs text-stone-500 mt-6">
           Powered by{' '}
-          <a
-            href="https://www.thebrokebackpacker.com"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-orange-400 hover:text-orange-300"
-          >
+          <a href="https://www.thebrokebackpacker.com" target="_blank" rel="noopener noreferrer" className="text-orange-400 hover:text-orange-300">
             The Broke Backpacker
           </a>
         </p>

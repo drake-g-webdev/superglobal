@@ -1805,28 +1805,30 @@ CALCULATED TOTALS (use trip duration):
 - Local transport: daily rate × trip days
 
 === WHAT TO EXTRACT ===
-ONLY extract costs that appear in STRUCTURED BUDGET SECTIONS like:
+Extract costs from STRUCTURED CONTENT like:
 - Bullet point lists with prices (e.g., "• Hostel: $15/night")
 - Numbered lists with costs
 - Tables with price columns
-- Explicit "Budget Breakdown" or "Estimated Costs" sections
+- Explicit "Budget Breakdown", "Estimated Costs", or "Total Costs" sections
+- Activity/location headings with prices under them (e.g., "Dhaka\nBoat Ride: $10")
+- Summary sections listing multiple costs (e.g., "Total for Two:\n- Item: $X\n- Item: $Y")
 
 1. SPECIFIC NAMED ITEMS: "Secret Garden Hostel: $15/night" → Calculate total
 2. BUDGET LINE ITEMS: From tables/breakdowns with clear prices
-3. RANGE PRICES: Use midpoint, note the range (only from budget sections)
-4. DAILY RATES: Calculate total for trip (only when explicitly listed as a budget item)
+3. RANGE PRICES: Use midpoint, note the range
+4. DAILY RATES: Calculate total for trip
+5. ACTIVITY COSTS: Tours, excursions, rentals with specific prices
+6. SUMMARY TOTALS: When a response ends with a cost summary, extract those items
 
 === WHAT TO SKIP (CRITICAL) ===
-❌ ANY prices mentioned in regular prose/paragraphs (NOT in a budget list)
 ❌ General advice: "budget around $50/day", "you can get by on..."
-❌ Grand totals: "Total Estimated Budget: $2,308"
-❌ Duplicates: Same cost mentioned multiple times
+❌ Grand totals/sums: "Total Estimated Budget: $2,308" (the SUM, not individual items)
+❌ Duplicates: Same cost mentioned multiple times (prefer the summary version)
 ❌ Vague amounts: "a few dollars", "relatively cheap"
-❌ Prices mentioned casually in sentences: "meals cost around $5" in a paragraph
 ❌ Context-setting prices: "with $30/day you could..."
 ❌ Comparison prices: "cheaper than the $100 tours"
 
-IMPORTANT: If the text has NO structured budget section (bullet list, table, or "Budget" heading), return an EMPTY costs array. Do NOT extract prices from narrative paragraphs.
+IMPORTANT: If there's BOTH inline prices AND a summary section at the end, prefer extracting from the SUMMARY section to avoid duplicates.
 
 === DEDUPLICATION RULES ===
 If the same expense appears multiple ways, extract ONCE with:

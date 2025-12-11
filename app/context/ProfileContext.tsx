@@ -139,6 +139,8 @@ function getStorageKey(userId: string | null | undefined): string {
 // Convert database profile to local profile format
 function dbToLocalProfile(dbProfile: Record<string, unknown>): Partial<UserProfile> {
   return {
+    // Name is included from User model in the API response
+    name: (dbProfile.name as string) || '',
     countryOfOrigin: (dbProfile.countryOfOrigin as string) || '',
     passportCountry: (dbProfile.passportCountry as string) || '',
     travelStyle: (dbProfile.travelStyle as UserProfile['travelStyle']) || 'solo',
@@ -225,11 +227,22 @@ export function ProfileProvider({ children }: { children: ReactNode }) {
 
     try {
       setIsSyncing(true);
-      await fetch('/api/profile', {
+      const dbData = localToDbProfile(profileData);
+      console.log('[ProfileContext] Syncing to database:', {
+        countryOfOrigin: dbData.countryOfOrigin,
+        riskTolerance: dbData.riskTolerance,
+        travelPace: dbData.travelPace,
+      });
+      const response = await fetch('/api/profile', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(localToDbProfile(profileData)),
+        body: JSON.stringify(dbData),
       });
+      console.log('[ProfileContext] Sync response:', response.status, response.ok);
+      if (!response.ok) {
+        const errorData = await response.json();
+        console.error('[ProfileContext] Sync failed:', errorData);
+      }
     } catch (error) {
       console.error('Failed to sync profile to database:', error);
     } finally {
@@ -242,11 +255,17 @@ export function ProfileProvider({ children }: { children: ReactNode }) {
     if (!userId) return null;
 
     try {
+      console.log('[ProfileContext] Loading profile from database for user:', userId);
       const response = await fetch('/api/profile');
+      console.log('[ProfileContext] API response status:', response.status);
       if (response.ok) {
         const data = await response.json();
-        if (data && Object.keys(data).length > 0) {
-          return dbToLocalProfile(data);
+        console.log('[ProfileContext] Raw API data:', data);
+        console.log('[ProfileContext] API data keys:', Object.keys(data));
+        if (data && Object.keys(data).length > 0 && !data.error) {
+          const converted = dbToLocalProfile(data);
+          console.log('[ProfileContext] Converted profile:', converted);
+          return converted;
         }
       }
     } catch (error) {
@@ -261,9 +280,19 @@ export function ProfileProvider({ children }: { children: ReactNode }) {
     const stored = localStorage.getItem(storageKey);
     let localProfile: UserProfile | null = null;
 
+    console.log('[ProfileContext] loadProfileForUser called for uid:', uid);
+    console.log('[ProfileContext] Storage key:', storageKey);
+    console.log('[ProfileContext] Raw localStorage data exists:', !!stored);
+
     if (stored) {
       try {
         const parsed = JSON.parse(stored);
+        console.log('[ProfileContext] Parsed localStorage:', {
+          name: parsed.name,
+          countryOfOrigin: parsed.countryOfOrigin,
+          travelStyle: parsed.travelStyle,
+          riskTolerance: parsed.riskTolerance
+        });
         localProfile = {
           ...defaultProfile,
           ...parsed,
@@ -277,27 +306,61 @@ export function ProfileProvider({ children }: { children: ReactNode }) {
     // If user is authenticated, try to load from database
     if (uid) {
       const dbProfile = await loadFromDatabase();
-      if (dbProfile && Object.keys(dbProfile).length > 0) {
-        // Database profile exists - use it as source of truth
+      console.log('[ProfileContext] DB profile result:', dbProfile ? 'found' : 'not found');
+      if (dbProfile) {
+        console.log('[ProfileContext] DB profile fields:', {
+          countryOfOrigin: dbProfile.countryOfOrigin,
+          travelStyle: dbProfile.travelStyle,
+          riskTolerance: dbProfile.riskTolerance,
+        });
+      }
+      // Check if DB profile has meaningful data (not just defaults)
+      const dbHasMeaningfulData = dbProfile && (
+        dbProfile.countryOfOrigin ||
+        dbProfile.passportCountry ||
+        dbProfile.riskTolerance !== 'medium' ||
+        dbProfile.travelPace !== 'moderate'
+      );
+
+      console.log('[ProfileContext] DB has meaningful data:', dbHasMeaningfulData);
+
+      if (dbHasMeaningfulData) {
+        // Database profile exists with real data - use it as source of truth
         const mergedProfile = {
           ...defaultProfile,
           ...dbProfile,
-          // Preserve name from local if DB doesn't have it (name is on User model, not Profile)
-          name: localProfile?.name || dbProfile.name || defaultProfile.name,
-        };
+        } as UserProfile;
+        console.log('[ProfileContext] Using DB profile, merged result:', {
+          name: mergedProfile.name,
+          countryOfOrigin: mergedProfile.countryOfOrigin,
+          travelStyle: mergedProfile.travelStyle,
+          riskTolerance: mergedProfile.riskTolerance,
+        });
         setProfile(mergedProfile);
         // Also update localStorage
         localStorage.setItem(storageKey, JSON.stringify(mergedProfile));
         return;
       } else if (localProfile && localProfile.name) {
-        // No DB profile but local profile exists - migrate to database
+        // DB profile is empty/default but local profile exists - use local and sync to DB
+        console.log('[ProfileContext] DB profile empty, using local profile and syncing');
         await syncToDatabase(localProfile);
         setProfile(localProfile);
+        return;
+      } else if (dbProfile && Object.keys(dbProfile).length > 0) {
+        // DB has a profile record (even if defaults) - still use it
+        const mergedProfile = {
+          ...defaultProfile,
+          ...dbProfile,
+        } as UserProfile;
+        console.log('[ProfileContext] Using DB profile (defaults):', mergedProfile.countryOfOrigin);
+        setProfile(mergedProfile);
+        localStorage.setItem(storageKey, JSON.stringify(mergedProfile));
         return;
       }
     }
 
     // Use local profile or defaults
+    console.log('[ProfileContext] Using local profile or defaults');
     setProfile(localProfile || defaultProfile);
   }, [loadFromDatabase, syncToDatabase]);
 

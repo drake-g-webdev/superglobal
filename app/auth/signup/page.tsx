@@ -260,8 +260,9 @@ export default function SignupPage() {
       // Save profile data to local state
       updateProfile(fullProfileData);
 
-      // Small delay to ensure session cookies are fully propagated
-      await new Promise(resolve => setTimeout(resolve, 500));
+      // Longer delay to ensure session cookies are fully propagated to server
+      console.log('[Signup] Waiting for session cookies to propagate...');
+      await new Promise(resolve => setTimeout(resolve, 1500));
 
       // Build database profile data (using DB field names)
       const dbProfileData = {
@@ -291,33 +292,44 @@ export default function SignupPage() {
 
       // Sync profile to database with retry logic
       let profileSaved = false;
+      console.log('[Signup] About to save profile to database:', {
+        countryOfOrigin: dbProfileData.countryOfOrigin,
+        riskTolerance: dbProfileData.riskTolerance,
+        travelPace: dbProfileData.travelPace,
+      });
+
       for (let attempt = 0; attempt < 3 && !profileSaved; attempt++) {
         try {
+          console.log(`[Signup] Profile save attempt ${attempt + 1}...`);
           const profileRes = await fetch('/api/profile', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(dbProfileData),
+            credentials: 'include', // Ensure cookies are sent
           });
 
           if (profileRes.ok) {
             profileSaved = true;
-            console.log('[Signup] Profile saved successfully');
+            const savedProfile = await profileRes.json();
+            console.log('[Signup] Profile saved successfully:', savedProfile.id);
           } else {
-            console.warn(`[Signup] Profile save attempt ${attempt + 1} failed:`, profileRes.status);
+            const errorData = await profileRes.json().catch(() => ({}));
+            console.warn(`[Signup] Profile save attempt ${attempt + 1} failed:`, profileRes.status, errorData);
             if (attempt < 2) {
-              await new Promise(resolve => setTimeout(resolve, 500));
+              // Longer delay between retries to allow cookies to propagate
+              await new Promise(resolve => setTimeout(resolve, 1000));
             }
           }
         } catch (fetchErr) {
           console.warn(`[Signup] Profile save attempt ${attempt + 1} error:`, fetchErr);
           if (attempt < 2) {
-            await new Promise(resolve => setTimeout(resolve, 500));
+            await new Promise(resolve => setTimeout(resolve, 1000));
           }
         }
       }
 
       if (!profileSaved) {
-        console.warn('[Signup] Could not save profile to database, will sync later');
+        console.error('[Signup] CRITICAL: Could not save profile to database after 3 attempts');
       }
 
       // Mark profile as complete

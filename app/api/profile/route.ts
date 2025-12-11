@@ -7,18 +7,51 @@ import prisma from '@/app/lib/prisma';
 export async function GET() {
   try {
     const session = await getServerSession(authOptions);
+    console.log('[Profile API] GET request, session user id:', session?.user?.id);
+
     if (!session?.user?.id) {
+      console.log('[Profile API] GET - Unauthorized, no session');
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const profile = await prisma.profile.findUnique({
-      where: { userId: session.user.id },
-    });
+    // Fetch profile with user's name
+    const [profile, user] = await Promise.all([
+      prisma.profile.findUnique({
+        where: { userId: session.user.id },
+      }),
+      prisma.user.findUnique({
+        where: { id: session.user.id },
+        select: { name: true },
+      }),
+    ]);
+
+    console.log('[Profile API] GET - Found profile:', profile ? 'yes' : 'no');
+    console.log('[Profile API] GET - User name:', user?.name);
+    if (profile) {
+      console.log('[Profile API] GET - Profile fields:', JSON.stringify({
+        id: profile.id,
+        userId: profile.userId,
+        countryOfOrigin: profile.countryOfOrigin,
+        travelStyle: profile.travelStyle,
+        riskTolerance: profile.riskTolerance,
+        travelPace: profile.travelPace,
+        monthlyBudget: profile.monthlyBudget,
+        partyWeight: profile.partyWeight,
+        foodPreference: profile.foodPreference,
+      }, null, 2));
+    } else {
+      console.log('[Profile API] GET - No profile found in database');
+    }
+
+    // Return profile with user's name included
+    if (profile) {
+      return NextResponse.json({ ...profile, name: user?.name || null });
+    }
 
     // Return empty object if no profile found (not an error)
-    return NextResponse.json(profile || {});
+    return NextResponse.json({});
   } catch (error) {
-    console.error('Error fetching profile:', error);
+    console.error('[Profile API] GET Error:', error);
     // Return empty object instead of 500 so client can fall back to localStorage
     return NextResponse.json({}, { status: 200 });
   }
@@ -37,6 +70,12 @@ export async function POST(request: NextRequest) {
 
     const data = await request.json();
     console.log('[Profile API] Saving profile for user:', session.user.id);
+    console.log('[Profile API] POST data received:', {
+      countryOfOrigin: data.countryOfOrigin,
+      travelStyle: data.travelStyle,
+      riskTolerance: data.riskTolerance,
+      budgetStyle: data.budgetStyle,
+    });
 
     const profile = await prisma.profile.upsert({
       where: { userId: session.user.id },
@@ -107,12 +146,20 @@ export async function POST(request: NextRequest) {
       },
     });
 
+    console.log('[Profile API] POST - Profile saved successfully:', {
+      id: profile.id,
+      countryOfOrigin: profile.countryOfOrigin,
+      riskTolerance: profile.riskTolerance,
+      travelPace: profile.travelPace,
+    });
+
     // Also update the user's name if provided
     if (data.name) {
       await prisma.user.update({
         where: { id: session.user.id },
         data: { name: data.name },
       });
+      console.log('[Profile API] POST - User name updated to:', data.name);
     }
 
     return NextResponse.json(profile);

@@ -1546,16 +1546,28 @@ CALCULATED TOTALS (use trip duration):
 - Local transport: daily rate × trip days
 
 === WHAT TO EXTRACT ===
-1. SPECIFIC NAMED ITEMS: "Secret Garden Hostel: $15/night" → Calculate total
-2. BUDGET LINE ITEMS: From tables/breakdowns
-3. RANGE PRICES: Use midpoint, note the range
-4. DAILY RATES: Calculate total for trip
+ONLY extract costs that appear in STRUCTURED BUDGET SECTIONS like:
+- Bullet point lists with prices (e.g., "• Hostel: $15/night")
+- Numbered lists with costs
+- Tables with price columns
+- Explicit "Budget Breakdown" or "Estimated Costs" sections
 
-=== WHAT TO SKIP ===
+1. SPECIFIC NAMED ITEMS: "Secret Garden Hostel: $15/night" → Calculate total
+2. BUDGET LINE ITEMS: From tables/breakdowns with clear prices
+3. RANGE PRICES: Use midpoint, note the range (only from budget sections)
+4. DAILY RATES: Calculate total for trip (only when explicitly listed as a budget item)
+
+=== WHAT TO SKIP (CRITICAL) ===
+❌ ANY prices mentioned in regular prose/paragraphs (NOT in a budget list)
 ❌ General advice: "budget around $50/day", "you can get by on..."
 ❌ Grand totals: "Total Estimated Budget: $2,308"
 ❌ Duplicates: Same cost mentioned multiple times
 ❌ Vague amounts: "a few dollars", "relatively cheap"
+❌ Prices mentioned casually in sentences: "meals cost around $5" in a paragraph
+❌ Context-setting prices: "with $30/day you could..."
+❌ Comparison prices: "cheaper than the $100 tours"
+
+IMPORTANT: If the text has NO structured budget section (bullet list, table, or "Budget" heading), return an EMPTY costs array. Do NOT extract prices from narrative paragraphs.
 
 === DEDUPLICATION RULES ===
 If the same expense appears multiple ways, extract ONCE with:

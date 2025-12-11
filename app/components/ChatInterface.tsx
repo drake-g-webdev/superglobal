@@ -132,8 +132,6 @@ export default function ChatInterface() {
     const [extractingItinerary, setExtractingItinerary] = useState<Set<string>>(new Set());
     const itineraryInFlightRef = useRef<Set<string>>(new Set());
 
-    // Track if we've added an itinerary to the trip (to show "Added" state)
-    const [addedItineraryFromMessage, setAddedItineraryFromMessage] = useState<number | null>(null);
 
     // Track which costs have been added to budget (by name to avoid duplicates)
     const [addedCosts, setAddedCosts] = useState<Set<string>>(new Set());
@@ -157,11 +155,6 @@ export default function ChatInterface() {
             setAddedCosts(budgeted);
         }
     }, [activeChat?.id, activeChat?.tripCosts.items]);
-
-    // Reset itinerary "added" state when switching chats (so new chat doesn't show "Added" from another chat)
-    useEffect(() => {
-        setAddedItineraryFromMessage(null);
-    }, [activeChat?.id]);
 
     // Extract locations from a message using AI
     const extractLocationsFromMessage = useCallback(async (messageContent: string, messageIndex: number, chatId: string, destination: string) => {
@@ -437,7 +430,6 @@ export default function ChatInterface() {
             tripDurationDays: extractedItinerary.totalDays,
         });
 
-        setAddedItineraryFromMessage(messageIndex);
         console.log('[Add Itinerary] Adding', extractedItinerary.stops.length, 'stops to trip');
 
         // Also add each stop to the map as a city pin with itinerary metadata
@@ -977,7 +969,7 @@ export default function ChatInterface() {
                                     Itinerary Detected ({activeChat.extractedItineraries[messageIndex].totalDays} days)
                                 </span>
                             </div>
-                            {addedItineraryFromMessage === messageIndex ? (
+                            {activeChat.tripContext?.itineraryBreakdown && activeChat.tripContext.itineraryBreakdown.length > 0 ? (
                                 <span className="flex items-center gap-1 text-xs bg-green-600/30 text-green-400 px-2 py-1 rounded">
                                     <Check size={12} />
                                     Added to Trip

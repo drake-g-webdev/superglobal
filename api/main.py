@@ -1812,6 +1812,9 @@ Extract costs from STRUCTURED CONTENT like:
 - Explicit "Budget Breakdown", "Estimated Costs", or "Total Costs" sections
 - Activity/location headings with prices under them (e.g., "Dhaka\nBoat Ride: $10")
 - Summary sections listing multiple costs (e.g., "Total for Two:\n- Item: $X\n- Item: $Y")
+- Numbered section breakdowns with costs (e.g., "2. K2 Base Camp Trek\nPermits and Fees: ~$300")
+- Costs with tildes indicating estimates (e.g., "~$1,200" or "~$150")
+- Line items with "Total for X Days" that represent category totals (NOT the grand trip total)
 
 1. SPECIFIC NAMED ITEMS: "Secret Garden Hostel: $15/night" → Calculate total
 2. BUDGET LINE ITEMS: From tables/breakdowns with clear prices
@@ -1819,14 +1822,20 @@ Extract costs from STRUCTURED CONTENT like:
 4. DAILY RATES: Calculate total for trip
 5. ACTIVITY COSTS: Tours, excursions, rentals with specific prices
 6. SUMMARY TOTALS: When a response ends with a cost summary, extract those items
+7. CATEGORY BREAKDOWNS: Numbered sections like "2. K2 Base Camp Trek (10-14 days)" with sub-costs
+8. ESTIMATED COSTS: Items with "~" (tilde) are estimates - extract the value as-is
 
 === WHAT TO SKIP (CRITICAL) ===
 ❌ General advice: "budget around $50/day", "you can get by on..."
-❌ Grand totals/sums: "Total Estimated Budget: $2,308" (the SUM, not individual items)
+❌ Overall trip grand total: "Total Budget: $3,500" (the FINAL SUM of everything)
 ❌ Duplicates: Same cost mentioned multiple times (prefer the summary version)
 ❌ Vague amounts: "a few dollars", "relatively cheap"
 ❌ Context-setting prices: "with $30/day you could..."
 ❌ Comparison prices: "cheaper than the $100 tours"
+❌ Daily budget constraints: "Daily Budget: $50/day" (this is a constraint, not an expense)
+
+NOTE: "Total for 70 Days: $1,400" for a CATEGORY is extractable (it's the accommodation total).
+      "Total Trip Budget: $3,500" is NOT extractable (it's the grand sum of everything).
 
 IMPORTANT: If there's BOTH inline prices AND a summary section at the end, prefer extracting from the SUMMARY section to avoid duplicates.
 
@@ -1853,19 +1862,43 @@ Extract warnings about scams or overpriced places:
 - description: What to watch out for
 - location: Where (optional)
 
-=== EXAMPLE INPUT ===
+=== EXAMPLE INPUT 1 ===
 "Hostels in Quito range from $10-15/night for dorms. Food is cheap - street meals cost $2-5.
 A 2-week trip would need around:
 - Hostels: ~$12/night average
 - Food: $10/day
 - SIM card: $15 one-time"
 
-=== EXAMPLE OUTPUT (for 14-day trip) ===
+=== EXAMPLE OUTPUT 1 (for 14-day trip) ===
 {{
   "costs": [
     {{"category": "accommodation", "name": "Hostel Dorms (Quito)", "amount": 175, "quantity": 1, "unit": "trip", "notes": "$12.50/night avg (range $10-15) × 14 nights", "text_to_match": "$10-15/night for dorms", "is_range": true}},
     {{"category": "food", "name": "Daily Food Budget", "amount": 140, "quantity": 1, "unit": "trip", "notes": "$10/day × 14 days", "text_to_match": "Food: $10/day"}},
     {{"category": "sim_connectivity", "name": "SIM Card", "amount": 15, "quantity": 1, "unit": "trip", "notes": "One-time purchase", "text_to_match": "SIM card: $15"}}
+  ],
+  "tourist_traps": []
+}}
+
+=== EXAMPLE INPUT 2 (Budget Breakdown Format) ===
+"Budget Breakdown
+1. Daily Expenses (Food, Accommodation, Local Transport)
+Estimated Cost: $15 to $20/day
+Total for 70 Days: $1,050 to $1,400
+2. K2 Base Camp Trek (10-14 days)
+Permits and Fees: ~$300
+Guides and Porters: ~$1,200
+Transport to/from Skardu: ~$200
+Equipment and Supplies: ~$150
+Total Estimated Trek Cost: ~$1,850"
+
+=== EXAMPLE OUTPUT 2 (for 70-day trip) ===
+{{
+  "costs": [
+    {{"category": "food", "name": "Daily Expenses (Food, Accommodation, Transport)", "amount": 1225, "quantity": 1, "unit": "trip", "notes": "$17.50/day avg (range $15-20) × 70 days", "text_to_match": "Total for 70 Days: $1,050 to $1,400", "is_range": true}},
+    {{"category": "activities", "name": "K2 Trek - Permits and Fees", "amount": 300, "quantity": 1, "unit": "trip", "notes": "Estimated", "text_to_match": "Permits and Fees: ~$300"}},
+    {{"category": "activities", "name": "K2 Trek - Guides and Porters", "amount": 1200, "quantity": 1, "unit": "trip", "notes": "Estimated", "text_to_match": "Guides and Porters: ~$1,200"}},
+    {{"category": "transport_local", "name": "K2 Trek - Transport to/from Skardu", "amount": 200, "quantity": 1, "unit": "trip", "notes": "Estimated", "text_to_match": "Transport to/from Skardu: ~$200"}},
+    {{"category": "gear", "name": "K2 Trek - Equipment and Supplies", "amount": 150, "quantity": 1, "unit": "trip", "notes": "Rental/purchase of essentials", "text_to_match": "Equipment and Supplies: ~$150"}}
   ],
   "tourist_traps": []
 }}

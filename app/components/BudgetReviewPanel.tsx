@@ -5,7 +5,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   DollarSign, Plus, Check, X, ChevronDown, ChevronUp,
   Bed, Bus, Plane, UtensilsCrossed, Mountain, FileText,
-  Wifi, Bike, AlertTriangle, Edit2, Calculator
+  Wifi, Bike, AlertTriangle, Edit2, Calculator, RefreshCw
 } from 'lucide-react';
 import clsx from 'clsx';
 import { ExtractedCost, CostCategory, CostItem, TouristTrap } from '../context/ChatsContext';
@@ -23,6 +23,14 @@ const CATEGORY_CONFIG: Record<CostCategory, { label: string; icon: React.Compone
   misc: { label: 'Miscellaneous', icon: DollarSign, color: '#6b7280' },
 };
 
+// Interface for costs that can be updated (same name, different amount)
+interface UpdatableCost {
+  extractedCost: ExtractedCost;
+  existingItem: CostItem;
+  oldTotal: number;
+  newTotal: number;
+}
+
 interface BudgetReviewPanelProps {
   costs: ExtractedCost[];
   existingBudgetItems: CostItem[];
@@ -30,6 +38,7 @@ interface BudgetReviewPanelProps {
   onAddCost: (cost: ExtractedCost) => void;
   onAddAllCosts: (costs: ExtractedCost[]) => void;
   onEditCost: (cost: ExtractedCost) => void;
+  onUpdateCost?: (existingItemId: string, updates: Partial<CostItem>) => void;
   onAddTouristTrap?: (trap: TouristTrap) => void;
   tripDays?: number;
 }
@@ -41,45 +50,71 @@ export default function BudgetReviewPanel({
   onAddCost,
   onAddAllCosts,
   onEditCost,
+  onUpdateCost,
   onAddTouristTrap,
   tripDays = 14,
 }: BudgetReviewPanelProps) {
   const [isExpanded, setIsExpanded] = useState(true);
   const [addedCosts, setAddedCosts] = useState<Set<string>>(new Set());
+  const [updatedCosts, setUpdatedCosts] = useState<Set<string>>(new Set());
 
-  // Check if a cost is already in the budget (deduplication)
-  const isCostDuplicate = (cost: ExtractedCost): boolean => {
+  // Find if a cost matches an existing budget item by name (case-insensitive)
+  const findMatchingBudgetItem = (cost: ExtractedCost): CostItem | null => {
     const nameLower = cost.name.toLowerCase();
-
-    // Check existing budget items
-    const existsInBudget = existingBudgetItems.some(item =>
+    return existingBudgetItems.find(item =>
       item.name.toLowerCase() === nameLower ||
-      // Also check for category + similar amount (might be same cost with different name)
-      (item.category === cost.category && Math.abs(item.amount - cost.amount) < 5)
-    );
-
-    // Check if just added in this session
-    const justAdded = addedCosts.has(nameLower);
-
-    return existsInBudget || justAdded;
+      // Also check for similar names (e.g., "Hostel Dorms" vs "Hostel Dorm")
+      item.name.toLowerCase().includes(nameLower) ||
+      nameLower.includes(item.name.toLowerCase())
+    ) || null;
   };
 
-  // Filter out duplicates and group costs
-  const { uniqueCosts, duplicateCosts, totalNewCosts } = useMemo(() => {
+  // Categorize costs into: new, updatable (same name, different amount), and exact duplicates
+  const { uniqueCosts, updatableCosts, duplicateCosts, totalNewCosts } = useMemo(() => {
     const unique: ExtractedCost[] = [];
+    const updatable: UpdatableCost[] = [];
     const duplicates: ExtractedCost[] = [];
 
     costs.forEach(cost => {
-      if (isCostDuplicate(cost)) {
+      const nameLower = cost.name.toLowerCase();
+
+      // Skip if just added in this session
+      if (addedCosts.has(nameLower)) {
         duplicates.push(cost);
+        return;
+      }
+
+      // Check for matching existing item
+      const matchingItem = findMatchingBudgetItem(cost);
+
+      if (matchingItem) {
+        const existingTotal = matchingItem.amount * matchingItem.quantity;
+        const newTotal = cost.amount * cost.quantity;
+
+        // If amounts are significantly different (more than $5 or 10% difference), mark as updatable
+        const difference = Math.abs(existingTotal - newTotal);
+        const percentDiff = existingTotal > 0 ? difference / existingTotal : 1;
+
+        if (difference > 5 && percentDiff > 0.1) {
+          updatable.push({
+            extractedCost: cost,
+            existingItem: matchingItem,
+            oldTotal: existingTotal,
+            newTotal: newTotal,
+          });
+        } else {
+          // Same amount - true duplicate
+          duplicates.push(cost);
+        }
       } else {
+        // No matching item - new cost
         unique.push(cost);
       }
     });
 
     const total = unique.reduce((sum, cost) => sum + (cost.amount * cost.quantity), 0);
 
-    return { uniqueCosts: unique, duplicateCosts: duplicates, totalNewCosts: total };
+    return { uniqueCosts: unique, updatableCosts: updatable, duplicateCosts: duplicates, totalNewCosts: total };
   }, [costs, existingBudgetItems, addedCosts]);
 
   // Handle adding a single cost
@@ -95,6 +130,37 @@ export default function BudgetReviewPanel({
       const newSet = new Set(prev);
       uniqueCosts.forEach(c => newSet.add(c.name.toLowerCase()));
       return newSet;
+    });
+  };
+
+  // Handle updating an existing cost with new values
+  const handleUpdateCost = (updatable: UpdatableCost) => {
+    if (!onUpdateCost) return;
+
+    const { extractedCost, existingItem } = updatable;
+
+    // Determine if this is a recurring cost based on unit
+    const isRecurring = ['night', 'nights', 'day', 'days'].includes(extractedCost.unit);
+    const perDay = isRecurring ? (extractedCost.quantity / tripDays) : undefined;
+
+    onUpdateCost(existingItem.id, {
+      amount: extractedCost.amount,
+      quantity: extractedCost.quantity,
+      unit: extractedCost.unit,
+      notes: extractedCost.notes,
+      isRecurring,
+      perDay,
+    });
+
+    setUpdatedCosts(prev => new Set([...prev, extractedCost.name.toLowerCase()]));
+  };
+
+  // Handle updating all updatable costs at once
+  const handleUpdateAllCosts = () => {
+    updatableCosts.forEach(updatable => {
+      if (!updatedCosts.has(updatable.extractedCost.name.toLowerCase())) {
+        handleUpdateCost(updatable);
+      }
     });
   };
 
@@ -121,6 +187,11 @@ export default function BudgetReviewPanel({
           )}
         </div>
         <div className="flex items-center gap-2">
+          {updatableCosts.length > 0 && (
+            <span className="text-xs bg-amber-600/30 text-amber-400 px-2 py-0.5 rounded-full">
+              {updatableCosts.length} can update
+            </span>
+          )}
           {duplicateCosts.length > 0 && (
             <span className="text-xs text-stone-500">
               {duplicateCosts.length} already in budget
@@ -233,6 +304,104 @@ export default function BudgetReviewPanel({
                 </div>
               )}
 
+              {/* Updatable costs (same name, different amount) */}
+              {updatableCosts.length > 0 && (
+                <div className="space-y-2 pt-2 border-t border-stone-700/50">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs text-amber-400 uppercase font-bold flex items-center gap-1">
+                      <RefreshCw size={12} />
+                      Update Budget
+                    </span>
+                    {onUpdateCost && updatableCosts.filter(u => !updatedCosts.has(u.extractedCost.name.toLowerCase())).length > 1 && (
+                      <button
+                        onClick={handleUpdateAllCosts}
+                        className="text-xs bg-amber-600 hover:bg-amber-500 text-white px-3 py-1 rounded-lg transition-colors flex items-center gap-1"
+                      >
+                        <RefreshCw size={12} />
+                        Update All
+                      </button>
+                    )}
+                  </div>
+                  <p className="text-xs text-stone-500 -mt-1">
+                    Trip length changed? These costs have different amounts:
+                  </p>
+
+                  <div className="space-y-1.5">
+                    {updatableCosts.map((updatable, idx) => {
+                      const { extractedCost, existingItem, oldTotal, newTotal } = updatable;
+                      const config = CATEGORY_CONFIG[extractedCost.category] || CATEGORY_CONFIG.misc;
+                      const Icon = config.icon;
+                      const isUpdated = updatedCosts.has(extractedCost.name.toLowerCase());
+                      const difference = newTotal - oldTotal;
+                      const isIncrease = difference > 0;
+
+                      return (
+                        <div
+                          key={`updatable-${extractedCost.name}-${idx}`}
+                          className={clsx(
+                            "flex items-center gap-3 p-2 rounded-lg transition-all",
+                            isUpdated ? "bg-amber-600/10 opacity-60" : "bg-stone-800/50 hover:bg-stone-800"
+                          )}
+                        >
+                          {/* Category Icon */}
+                          <div
+                            className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0"
+                            style={{ backgroundColor: config.color + '20', color: config.color }}
+                          >
+                            <Icon size={14} />
+                          </div>
+
+                          {/* Cost Info */}
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2">
+                              <span className="text-sm font-medium truncate">{extractedCost.name}</span>
+                            </div>
+                            <p className="text-xs text-stone-500">
+                              {existingItem.quantity} {existingItem.unit} → {extractedCost.quantity} {extractedCost.unit}
+                            </p>
+                          </div>
+
+                          {/* Amount comparison */}
+                          <div className="text-right">
+                            <div className="flex items-center gap-1">
+                              <span className="text-sm text-stone-500 line-through">
+                                ${oldTotal.toFixed(0)}
+                              </span>
+                              <span className="text-sm font-bold text-amber-400">
+                                ${newTotal.toFixed(0)}
+                              </span>
+                            </div>
+                            <p className={clsx(
+                              "text-[10px]",
+                              isIncrease ? "text-red-400" : "text-green-400"
+                            )}>
+                              {isIncrease ? '+' : ''}{difference.toFixed(0)}
+                            </p>
+                          </div>
+
+                          {/* Actions */}
+                          <div className="flex items-center gap-1">
+                            {isUpdated ? (
+                              <span className="p-1.5 text-amber-400">
+                                <Check size={14} />
+                              </span>
+                            ) : onUpdateCost ? (
+                              <button
+                                onClick={() => handleUpdateCost(updatable)}
+                                className="p-1.5 text-amber-400 hover:text-amber-300 hover:bg-amber-500/20 rounded transition-colors"
+                                title="Update in budget"
+                              >
+                                <RefreshCw size={14} />
+                              </button>
+                            ) : null}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
               {/* Already in budget (collapsed by default) */}
               {duplicateCosts.length > 0 && (
                 <div className="pt-2 border-t border-stone-700/50">
@@ -284,7 +453,7 @@ export default function BudgetReviewPanel({
               )}
 
               {/* All costs added state */}
-              {uniqueCosts.length === 0 && duplicateCosts.length > 0 && touristTraps.length === 0 && (
+              {uniqueCosts.length === 0 && updatableCosts.length === 0 && duplicateCosts.length > 0 && touristTraps.length === 0 && (
                 <div className="flex items-center justify-center gap-2 py-2 text-green-400">
                   <Check size={16} />
                   <span className="text-sm">All costs already in your budget!</span>

@@ -85,7 +85,7 @@ function ThinkingAnimation() {
 }
 
 export default function ChatInterface() {
-    const { activeChat, updateChat, addMessage, addMapPin, removeMapPin, addTouristTrap, updateMapView, mergeConversationVariables, setExtractedLocations, setExtractedCosts, setExtractedItinerary, addCostItem, updateTripContext, updateMapPin } = useChats();
+    const { activeChat, updateChat, addMessage, addMapPin, removeMapPin, addTouristTrap, updateMapView, mergeConversationVariables, setExtractedLocations, setExtractedCosts, setExtractedItinerary, addCostItem, updateCostItem, updateTripContext, updateMapPin } = useChats();
     const { profile, isProfileSet } = useProfile();
     const t = useTranslations('chat');
     const tProfile = useTranslations('profile');
@@ -1005,6 +1005,11 @@ export default function ChatInterface() {
                         onAddCost={handleAddSingleCost}
                         onAddAllCosts={handleAddAllCosts}
                         onEditCost={(cost) => openCostEditModal(cost, messageIndex)}
+                        onUpdateCost={(itemId, updates) => {
+                            if (activeChat) {
+                                updateCostItem(activeChat.id, itemId, updates);
+                            }
+                        }}
                         tripDays={activeChat?.tripContext?.tripDurationDays || 14}
                     />
                 )}

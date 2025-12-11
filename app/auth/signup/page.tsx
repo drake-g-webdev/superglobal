@@ -3,14 +3,14 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { Mail, Lock, User, MapPin, Loader2, AlertCircle, ChevronRight, ChevronLeft, Key, Globe, Info, Compass, Gauge, Utensils, DollarSign, Shield, Camera } from 'lucide-react';
+import { Mail, Lock, User, MapPin, Loader2, AlertCircle, ChevronRight, ChevronLeft, Key, Globe, Info, Compass, Gauge, Utensils, Shield, Camera } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import SpinningGlobe from '../../components/SpinningGlobe';
 import { useProfile, UserProfile, ActivityWeighting, defaultActivityWeighting } from '../../context/ProfileContext';
 import { useTranslations, useLocale } from '../../context/LocaleContext';
 import clsx from 'clsx';
 
-// Tooltip component
+// Tooltip component - positioned to stay within viewport
 function Tooltip({ content, children }: { content: string; children: React.ReactNode }) {
   const [show, setShow] = useState(false);
 
@@ -24,9 +24,9 @@ function Tooltip({ content, children }: { content: string; children: React.React
         {children}
       </div>
       {show && (
-        <div className="absolute z-20 bottom-full left-1/2 -translate-x-1/2 mb-2 px-3 py-2 bg-stone-900 border border-stone-600 rounded-lg text-xs text-stone-300 w-64 shadow-lg">
+        <div className="absolute z-50 bottom-full right-0 mb-2 px-3 py-2 bg-stone-900 border border-stone-600 rounded-lg text-xs text-stone-300 w-64 shadow-lg">
           {content}
-          <div className="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-stone-600" />
+          <div className="absolute top-full right-4 border-4 border-transparent border-t-stone-600" />
         </div>
       )}
     </div>
@@ -114,9 +114,9 @@ export default function SignupPage() {
   const tProfile = useTranslations('profile');
   const tLanguage = useTranslations('language');
 
-  // Total steps: 1-Account, 2-Language, 3-Basic Info, 4-Travel Prefs, 5-Activity, 6-Food&Gear, 7-Budget, 8-Safety&Content
+  // Total steps: 1-Account, 2-Language, 3-Basic Info, 4-Travel Prefs, 5-Activity, 6-Food&Gear, 7-Safety&Content
   const [step, setStep] = useState(1);
-  const totalSteps = 8;
+  const totalSteps = 7;
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
 
@@ -146,12 +146,10 @@ export default function SignupPage() {
   const [packWeight, setPackWeight] = useState<'minimalist' | 'moderate' | 'maximalist'>('moderate');
   const [electronicsTolerance, setElectronicsTolerance] = useState<'low' | 'medium' | 'high'>('medium');
 
-  // Step 7: Budget & Income
+  // Step 6: Food & Gear also includes budget style
   const [budgetPreference, setBudgetPreference] = useState<UserProfile['budgetPreference']>('broke-backpacker');
-  const [incomeType, setIncomeType] = useState<'remote_worker' | 'seasonal_worker' | 'savings_only' | 'passive_income'>('savings_only');
-  const [monthlyBudget, setMonthlyBudget] = useState(1500);
 
-  // Step 8: Safety & Content Creation
+  // Step 7: Safety & Content Creation
   const [walkAtNight, setWalkAtNight] = useState(true);
   const [experiencedMotos, setExperiencedMotos] = useState(false);
   const [openToCouchsurfing, setOpenToCouchsurfing] = useState(false);
@@ -250,8 +248,6 @@ export default function SignupPage() {
         packWeight,
         electronicsTolerance,
         budgetPreference,
-        incomeType,
-        monthlyBudget,
         walkAtNight,
         experiencedMotos,
         openToCouchsurfing,
@@ -284,8 +280,6 @@ export default function SignupPage() {
         packWeight,
         electronicsTolerance,
         budgetStyle: budgetPreference,
-        incomeType,
-        monthlyBudget,
         nightWalking: walkAtNight,
         motorbikeOk: experiencedMotos,
         couchsurfingOk: openToCouchsurfing,
@@ -331,11 +325,11 @@ export default function SignupPage() {
       await markProfileComplete();
 
       // Give the session a moment to fully update before navigation
-      await new Promise(resolve => setTimeout(resolve, 300));
+      await new Promise(resolve => setTimeout(resolve, 500));
 
-      // Redirect to main app
+      // Hard redirect to main app - forces full page reload to ensure session is fresh
       console.log('[Signup] Redirecting to /app...');
-      router.push('/app');
+      window.location.href = '/app';
     } catch (err) {
       console.error('[Signup] Unexpected error:', err);
       setError('An unexpected error occurred');
@@ -630,10 +624,10 @@ export default function SignupPage() {
                     <label className="block text-xs text-stone-400 uppercase font-bold mb-2">{tProfile('comfortThreshold')}</label>
                     <div className="grid grid-cols-2 gap-2">
                       {([
-                        { value: 'hotels' as const, label: `🏨 ${tProfile('hotels')}` },
-                        { value: 'hostels' as const, label: `🛏️ ${tProfile('hostels')}` },
-                        { value: 'tents' as const, label: `⛺ ${tProfile('tents')}` },
-                        { value: 'couchsurfing' as const, label: `🛋️ ${tProfile('couchsurfing')}` },
+                        { value: 'hotels' as const, label: '🏨 Hotels' },
+                        { value: 'hostels' as const, label: '🛏️ Hostels' },
+                        { value: 'tents' as const, label: '⛺ Camping' },
+                        { value: 'couchsurfing' as const, label: '🛋️ Couchsurfing' },
                       ]).map(opt => (
                         <button key={opt.value} type="button" onClick={() => setComfortThreshold(opt.value)}
                           className={clsx("px-3 py-2 rounded-lg text-sm font-medium transition-colors border",
@@ -761,25 +755,7 @@ export default function SignupPage() {
                       ))}
                     </div>
                   </div>
-                </div>
-              </>
-            )}
 
-            {/* STEP 7: Budget & Income */}
-            {step === 7 && (
-              <>
-                <div className="flex items-center justify-between mb-4">
-                  <button type="button" onClick={handlePrevStep} className="text-stone-400 hover:text-white transition-colors flex items-center gap-1">
-                    <ChevronLeft size={18} /> Back
-                  </button>
-                  <h2 className="text-lg font-semibold flex items-center gap-2">
-                    <DollarSign size={20} className="text-orange-500" />
-                    {tProfile('budgetAndIncome')}
-                  </h2>
-                  <div className="w-16" />
-                </div>
-
-                <div className="space-y-4">
                   <div>
                     <label className="block text-xs text-stone-400 uppercase font-bold mb-2">{tProfile('budgetStyle')}</label>
                     <div className="space-y-2">
@@ -800,40 +776,12 @@ export default function SignupPage() {
                       ))}
                     </div>
                   </div>
-
-                  <div>
-                    <label className="block text-xs text-stone-400 uppercase font-bold mb-2">{tProfile('incomeType')}</label>
-                    <div className="grid grid-cols-2 gap-2">
-                      {([
-                        { value: 'remote_worker' as const, label: `💻 ${tProfile('remoteWorker')}` },
-                        { value: 'seasonal_worker' as const, label: `🌾 ${tProfile('seasonalWorker')}` },
-                        { value: 'savings_only' as const, label: `🏦 ${tProfile('savingsOnly')}` },
-                        { value: 'passive_income' as const, label: `📈 ${tProfile('passiveIncome')}` },
-                      ]).map(opt => (
-                        <button key={opt.value} type="button" onClick={() => setIncomeType(opt.value)}
-                          className={clsx("px-2 py-2 rounded-lg text-xs font-medium transition-colors border text-center",
-                            incomeType === opt.value ? "bg-orange-600 border-orange-500 text-white" : "bg-stone-700 border-stone-600 hover:border-stone-500")}>
-                          {opt.label}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-
-                  <div>
-                    <label className="block text-xs text-stone-400 uppercase font-bold mb-1">{tProfile('monthlyBudget')}</label>
-                    <input
-                      type="number"
-                      value={monthlyBudget}
-                      onChange={(e) => setMonthlyBudget(parseInt(e.target.value) || 0)}
-                      className="w-full bg-stone-700 border border-stone-600 rounded-lg px-4 py-3 focus:outline-none focus:border-orange-500"
-                    />
-                  </div>
                 </div>
               </>
             )}
 
-            {/* STEP 8: Safety & Content Creation */}
-            {step === 8 && (
+            {/* STEP 7: Safety & Content Creation */}
+            {step === 7 && (
               <>
                 <div className="flex items-center justify-between mb-4">
                   <button type="button" onClick={handlePrevStep} className="text-stone-400 hover:text-white transition-colors flex items-center gap-1">

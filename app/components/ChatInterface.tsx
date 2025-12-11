@@ -599,95 +599,129 @@ export default function ChatInterface() {
 
         setAddingLocation(location.name);
         try {
-            // Use the location's specific area for geocoding context, combined with the trip destination
-            // e.g., "Cotopaxi, Ecuador" instead of just "Ecuador"
             const geocodeContext = location.area
                 ? `${location.area}, ${activeChat.destination}`
                 : activeChat.destination;
-            console.log('[Add to Map] Geocoding:', location.name, 'in context:', geocodeContext, '(area:', location.area, ')');
-            const geocodeResponse = await fetch(`${API_URL}/api/geocode`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    place_name: location.name,
-                    context: geocodeContext,
-                }),
-            });
 
-            console.log('[Add to Map] Geocode response status:', geocodeResponse.status);
-            if (geocodeResponse.ok) {
-                const geocodeData = await geocodeResponse.json();
-                console.log('[Add to Map] Geocode data:', geocodeData);
-                if (geocodeData.success && geocodeData.coordinates) {
-                    console.log('[Add to Map] Adding pin to map:', location.name, 'at', geocodeData.coordinates);
-                    const coords = geocodeData.coordinates as [number, number];
+            // For restaurants/cafes, use Google Places API first - it's better at finding businesses
+            // and returns accurate coordinates for the actual location
+            const isBusinessType = ['restaurant', 'accommodation'].includes(location.type);
 
-                    // Find nearest itinerary stop to link this location as a child
-                    const parentStopId = findNearestItineraryStop(coords);
-                    console.log('[Add to Map] Parent stop ID:', parentStopId);
+            let coords: [number, number] | null = null;
+            let placeDetails: PlaceDetails | undefined;
 
-                    // Fetch place details with photos from Google Places API
-                    let placeDetails: PlaceDetails | undefined;
-                    try {
-                        const searchQuery = location.area
-                            ? `${location.name}, ${location.area}, ${activeChat.destination}`
-                            : `${location.name}, ${activeChat.destination}`;
-                        console.log('[Add to Map] Fetching place details for query:', searchQuery);
-                        const placesResponse = await fetch('/api/google/places', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({
-                                query: searchQuery,
-                                location: coords,
-                            }),
-                        });
-                        console.log('[Add to Map] Places API response status:', placesResponse.status);
-                        if (placesResponse.ok) {
-                            const placesData = await placesResponse.json();
-                            console.log('[Add to Map] Places API response data:', JSON.stringify(placesData, null, 2));
-                            if (placesData.success && placesData.place) {
-                                placeDetails = {
-                                    placeId: placesData.place.placeId,
-                                    address: placesData.place.address,
-                                    rating: placesData.place.rating,
-                                    reviewCount: placesData.place.reviewCount,
-                                    photos: placesData.place.photos,
-                                    website: placesData.place.website,
-                                    phone: placesData.place.phone,
-                                    priceLevel: placesData.place.priceLevel,
-                                    openingHours: placesData.place.openingHours,
-                                };
-                                console.log('[Add to Map] Got place details with', placesData.place.photos?.length || 0, 'photos');
-                                console.log('[Add to Map] placeDetails object:', JSON.stringify(placeDetails, null, 2));
-                            } else {
-                                console.warn('[Add to Map] Places API returned no place data:', placesData);
-                            }
-                        } else {
-                            const errorText = await placesResponse.text();
-                            console.error('[Add to Map] Places API error response:', placesResponse.status, errorText);
-                        }
-                    } catch (placesError) {
-                        console.error('[Add to Map] Could not fetch place details:', placesError);
-                    }
+            if (isBusinessType) {
+                // Try Google Places API first for businesses - more accurate for restaurants/cafes
+                console.log('[Add to Map] Using Places API for business:', location.name);
+                const searchQuery = location.area
+                    ? `${location.name}, ${location.area}, ${activeChat.destination}`
+                    : `${location.name}, ${activeChat.destination}`;
 
-                    addMapPin(activeChat.id, {
-                        name: location.name,
-                        type: location.type,
-                        description: location.description,
-                        coordinates: coords,
-                        sourceMessageIndex: messageIndex,
-                        parentStopId, // Link to nearest itinerary stop
-                        placeDetails,
+                try {
+                    const placesResponse = await fetch('/api/google/places', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ query: searchQuery }),
                     });
-                    // Center the map on the newly added pin
-                    updateMapView(activeChat.id, coords, 14);
-                    setAddedLocations(prev => new Set([...prev, location.name.toLowerCase()]));
-                    console.log('[Add to Map] Pin added successfully, map centered on', coords);
-                } else {
-                    console.warn(`[Add to Map] Could not find coordinates for ${location.name}`, geocodeData);
+
+                    if (placesResponse.ok) {
+                        const placesData = await placesResponse.json();
+                        console.log('[Add to Map] Places API result:', placesData.success, placesData.place?.name);
+                        if (placesData.success && placesData.place) {
+                            // Use coordinates from Places API - these are accurate for the business
+                            if (placesData.place.coordinates) {
+                                coords = placesData.place.coordinates as [number, number];
+                                console.log('[Add to Map] Got coords from Places API:', coords);
+                            }
+                            placeDetails = {
+                                placeId: placesData.place.placeId,
+                                address: placesData.place.address,
+                                rating: placesData.place.rating,
+                                reviewCount: placesData.place.reviewCount,
+                                photos: placesData.place.photos,
+                                website: placesData.place.website,
+                                phone: placesData.place.phone,
+                                priceLevel: placesData.place.priceLevel,
+                                openingHours: placesData.place.openingHours,
+                            };
+                        }
+                    }
+                } catch (placesError) {
+                    console.warn('[Add to Map] Places API failed, falling back to geocode:', placesError);
                 }
+            }
+
+            // Fall back to geocode API if Places didn't return coords
+            if (!coords) {
+                console.log('[Add to Map] Using Geocode API for:', location.name, 'context:', geocodeContext);
+                const geocodeResponse = await fetch(`${API_URL}/api/geocode`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        place_name: location.name,
+                        context: geocodeContext,
+                    }),
+                });
+
+                if (geocodeResponse.ok) {
+                    const geocodeData = await geocodeResponse.json();
+                    if (geocodeData.success && geocodeData.coordinates) {
+                        coords = geocodeData.coordinates as [number, number];
+                        console.log('[Add to Map] Got coords from Geocode API:', coords);
+
+                        // If we don't have place details yet, try to get them
+                        if (!placeDetails) {
+                            try {
+                                const searchQuery = location.area
+                                    ? `${location.name}, ${location.area}, ${activeChat.destination}`
+                                    : `${location.name}, ${activeChat.destination}`;
+                                const placesResponse = await fetch('/api/google/places', {
+                                    method: 'POST',
+                                    headers: { 'Content-Type': 'application/json' },
+                                    body: JSON.stringify({ query: searchQuery, location: coords }),
+                                });
+                                if (placesResponse.ok) {
+                                    const placesData = await placesResponse.json();
+                                    if (placesData.success && placesData.place) {
+                                        placeDetails = {
+                                            placeId: placesData.place.placeId,
+                                            address: placesData.place.address,
+                                            rating: placesData.place.rating,
+                                            reviewCount: placesData.place.reviewCount,
+                                            photos: placesData.place.photos,
+                                            website: placesData.place.website,
+                                            phone: placesData.place.phone,
+                                            priceLevel: placesData.place.priceLevel,
+                                            openingHours: placesData.place.openingHours,
+                                        };
+                                    }
+                                }
+                            } catch (placesError) {
+                                console.warn('[Add to Map] Could not fetch place details:', placesError);
+                            }
+                        }
+                    }
+                }
+            }
+
+            if (coords) {
+                console.log('[Add to Map] Adding pin:', location.name, 'at', coords);
+                const parentStopId = findNearestItineraryStop(coords);
+
+                addMapPin(activeChat.id, {
+                    name: location.name,
+                    type: location.type,
+                    description: location.description,
+                    coordinates: coords,
+                    sourceMessageIndex: messageIndex,
+                    parentStopId,
+                    placeDetails,
+                });
+                updateMapView(activeChat.id, coords, 14);
+                setAddedLocations(prev => new Set([...prev, location.name.toLowerCase()]));
+                console.log('[Add to Map] Pin added successfully');
             } else {
-                console.error('[Add to Map] Geocode request failed:', geocodeResponse.status, geocodeResponse.statusText);
+                console.warn(`[Add to Map] Could not find coordinates for ${location.name}`);
             }
         } catch (e) {
             console.error(`[Add to Map] Failed to geocode ${location.name}:`, e);

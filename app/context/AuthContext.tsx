@@ -26,6 +26,7 @@ function AuthContextProvider({ children }: { children: ReactNode }) {
 
   const login = async (email: string, password: string) => {
     try {
+      console.log('[Auth] Attempting login for:', email);
       const result = await signIn('credentials', {
         email,
         password,
@@ -33,17 +34,33 @@ function AuthContextProvider({ children }: { children: ReactNode }) {
         redirect: false,
       });
 
+      console.log('[Auth] Login result:', result);
+
       if (result?.error) {
+        console.log('[Auth] Login error:', result.error);
         return { ok: false, error: result.error };
       }
+
+      if (!result?.ok) {
+        console.log('[Auth] Login not ok, result:', result);
+        return { ok: false, error: 'Login failed' };
+      }
+
+      // Force session refresh to ensure isAuthenticated updates before navigation
+      console.log('[Auth] Login successful, refreshing session...');
+      await update();
+      console.log('[Auth] Session refreshed');
+
       return { ok: true };
     } catch (error) {
+      console.error('[Auth] Login exception:', error);
       return { ok: false, error: 'An unexpected error occurred' };
     }
   };
 
   const signup = async (email: string, password: string, name: string) => {
     try {
+      console.log('[Auth] Attempting signup for:', email);
       const result = await signIn('credentials', {
         email,
         password,
@@ -52,11 +69,26 @@ function AuthContextProvider({ children }: { children: ReactNode }) {
         redirect: false,
       });
 
+      console.log('[Auth] Signup result:', result);
+
       if (result?.error) {
+        console.log('[Auth] Signup error:', result.error);
         return { ok: false, error: result.error };
       }
+
+      if (!result?.ok) {
+        console.log('[Auth] Signup not ok, result:', result);
+        return { ok: false, error: 'Signup failed' };
+      }
+
+      // Force session refresh to ensure isAuthenticated updates before navigation
+      console.log('[Auth] Signup successful, refreshing session...');
+      await update();
+      console.log('[Auth] Session refreshed');
+
       return { ok: true };
     } catch (error) {
+      console.error('[Auth] Signup exception:', error);
       return { ok: false, error: 'An unexpected error occurred' };
     }
   };

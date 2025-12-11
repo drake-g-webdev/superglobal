@@ -158,6 +158,11 @@ export default function ChatInterface() {
         }
     }, [activeChat?.id, activeChat?.tripCosts.items]);
 
+    // Reset itinerary "added" state when switching chats (so new chat doesn't show "Added" from another chat)
+    useEffect(() => {
+        setAddedItineraryFromMessage(null);
+    }, [activeChat?.id]);
+
     // Extract locations from a message using AI
     const extractLocationsFromMessage = useCallback(async (messageContent: string, messageIndex: number, chatId: string, destination: string) => {
         const key = `${chatId}-${messageIndex}`;
@@ -753,12 +758,11 @@ export default function ChatInterface() {
         const costExtractKey = activeChat ? `costs-${activeChat.id}-${messageIndex}` : '';
         const isExtractingCosts = extractingCosts.has(costExtractKey);
 
-        // Track which locations and costs have been shown (by name, lowercase)
+        // Track which locations have been shown (by name, lowercase)
         const shownLocations = new Set<string>();
-        const shownCosts = new Set<string>();
 
-        // Build placeholder mapping for inline buttons
-        const placeholderMap = new Map<string, { type: 'location' | 'cost'; data: ExtractedLocation | ExtractedCost }>();
+        // Build placeholder mapping for inline location buttons (costs handled by BudgetReviewPanel)
+        const placeholderMap = new Map<string, { type: 'location'; data: ExtractedLocation }>();
         let processedContent = content;
 
         // For each location, find where it appears and mark it for button insertion
@@ -777,42 +781,11 @@ export default function ChatInterface() {
             }
         }
 
-        // For each cost, use the AI-provided text_to_match to place buttons
-        for (const cost of costs) {
-            const costKey = `${cost.name.toLowerCase()}-${cost.amount}`;
-            if (shownCosts.has(costKey)) continue;
+        // Note: Cost placeholders removed - all costs are now shown in BudgetReviewPanel at the end of the message
 
-            const textToMatch = (cost as { text_to_match?: string }).text_to_match;
-            if (textToMatch && textToMatch.length > 2) {
-                const escapedText = textToMatch.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-                const regex = new RegExp(`(${escapedText})`, 'i');
-                const match = processedContent.match(regex);
-                if (match) {
-                    const placeholder = `⟦COST${placeholderMap.size}⟧`;
-                    processedContent = processedContent.replace(regex, `$1${placeholder}`);
-                    placeholderMap.set(placeholder, { type: 'cost', data: cost });
-                    shownCosts.add(costKey);
-                    continue;
-                }
-            }
-
-            if (cost.name.length > 3) {
-                const nameRegex = new RegExp(`(${cost.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'i');
-                const match = processedContent.match(nameRegex);
-                if (match) {
-                    const placeholder = `⟦COST${placeholderMap.size}⟧`;
-                    processedContent = processedContent.replace(nameRegex, `$1${placeholder}`);
-                    placeholderMap.set(placeholder, { type: 'cost', data: cost });
-                    shownCosts.add(costKey);
-                }
-            }
-        }
-
-        // Note: We no longer show inline cost buttons - BudgetReviewPanel handles all costs
-
-        // Helper to render inline buttons from placeholders in text
+        // Helper to render inline location buttons from placeholders in text
         const renderTextWithButtons = (text: string): React.ReactNode => {
-            const placeholderRegex = /⟦(LOC|COST)\d+⟧/g;
+            const placeholderRegex = /⟦LOC\d+⟧/g;
             const parts: React.ReactNode[] = [];
             let lastIndex = 0;
             let match;
@@ -828,49 +801,46 @@ export default function ChatInterface() {
                 const data = placeholderMap.get(placeholder);
 
                 if (data) {
-                    if (data.type === 'location') {
-                        const location = data.data as ExtractedLocation;
-                        const isOnMap = isLocationOnMap(location.name) || addedLocations.has(location.name.toLowerCase());
-                        const isAdding = addingLocation === location.name;
+                    const location = data.data;
+                    const isOnMap = isLocationOnMap(location.name) || addedLocations.has(location.name.toLowerCase());
+                    const isAdding = addingLocation === location.name;
 
-                        if (!isOnMap) {
-                            parts.push(
-                                <button
-                                    key={`loc-btn-${keyIdx++}`}
-                                    onClick={() => addLocationToMap(location, messageIndex)}
-                                    disabled={isAdding}
-                                    className={clsx(
-                                        "inline-flex items-center gap-0.5 px-1 py-0.5 rounded text-[10px] transition-colors align-middle mx-0.5",
-                                        isAdding
-                                            ? "bg-stone-600 text-stone-300 cursor-wait"
-                                            : "bg-orange-600/30 hover:bg-orange-600/50 text-orange-400 hover:text-orange-300 border border-orange-500/30"
-                                    )}
-                                    title={`Add ${location.name} to map`}
-                                >
-                                    {isAdding ? (
-                                        <Loader2 size={10} className="animate-spin" />
-                                    ) : (
-                                        <>
-                                            <Plus size={10} />
-                                            <MapPin size={10} />
-                                        </>
-                                    )}
-                                </button>
-                            );
-                        } else {
-                            parts.push(
-                                <span
-                                    key={`loc-check-${keyIdx++}`}
-                                    className="inline-flex items-center gap-0.5 px-1 py-0.5 rounded text-[10px] bg-green-600/20 text-green-400 align-middle mx-0.5"
-                                    title={`${location.name} is on map`}
-                                >
-                                    <Check size={10} />
-                                    <MapPin size={10} />
-                                </span>
-                            );
-                        }
+                    if (!isOnMap) {
+                        parts.push(
+                            <button
+                                key={`loc-btn-${keyIdx++}`}
+                                onClick={() => addLocationToMap(location, messageIndex)}
+                                disabled={isAdding}
+                                className={clsx(
+                                    "inline-flex items-center gap-0.5 px-1 py-0.5 rounded text-[10px] transition-colors align-middle mx-0.5",
+                                    isAdding
+                                        ? "bg-stone-600 text-stone-300 cursor-wait"
+                                        : "bg-orange-600/30 hover:bg-orange-600/50 text-orange-400 hover:text-orange-300 border border-orange-500/30"
+                                )}
+                                title={`Add ${location.name} to map`}
+                            >
+                                {isAdding ? (
+                                    <Loader2 size={10} className="animate-spin" />
+                                ) : (
+                                    <>
+                                        <Plus size={10} />
+                                        <MapPin size={10} />
+                                    </>
+                                )}
+                            </button>
+                        );
+                    } else {
+                        parts.push(
+                            <span
+                                key={`loc-check-${keyIdx++}`}
+                                className="inline-flex items-center gap-0.5 px-1 py-0.5 rounded text-[10px] bg-green-600/20 text-green-400 align-middle mx-0.5"
+                                title={`${location.name} is on map`}
+                            >
+                                <Check size={10} />
+                                <MapPin size={10} />
+                            </span>
+                        );
                     }
-                    // Note: Cost buttons removed - all costs now shown in BudgetReviewPanel below message
                 }
 
                 lastIndex = match.index + match[0].length;
@@ -884,12 +854,12 @@ export default function ChatInterface() {
             return parts.length > 0 ? parts : text;
         };
 
-        // Helper to process children and convert any string children with placeholders to buttons
+        // Helper to process children and convert any string children with location placeholders to buttons
         const processChildren = (children: React.ReactNode): React.ReactNode => {
             return React.Children.map(children, child => {
                 if (typeof child === 'string') {
-                    // Check if this string contains any placeholders
-                    if (/⟦(LOC|COST)\d+⟧/.test(child)) {
+                    // Check if this string contains any location placeholders
+                    if (/⟦LOC\d+⟧/.test(child)) {
                         return renderTextWithButtons(child);
                     }
                     return child;

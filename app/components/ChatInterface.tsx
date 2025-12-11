@@ -603,57 +603,53 @@ export default function ChatInterface() {
                 ? `${location.area}, ${activeChat.destination}`
                 : activeChat.destination;
 
-            // For restaurants/cafes, use Google Places API first - it's better at finding businesses
-            // and returns accurate coordinates for the actual location
-            const isBusinessType = ['restaurant', 'accommodation'].includes(location.type);
-
+            // Always use Google Places API first - it returns accurate coordinates
+            // The geocode API often falls back to city-center coordinates
             let coords: [number, number] | null = null;
             let placeDetails: PlaceDetails | undefined;
 
-            if (isBusinessType) {
-                // Try Google Places API first for businesses - more accurate for restaurants/cafes
-                console.log('[Add to Map] Using Places API for business:', location.name);
-                const searchQuery = location.area
-                    ? `${location.name}, ${location.area}, ${activeChat.destination}`
-                    : `${location.name}, ${activeChat.destination}`;
+            // Try Google Places API first for ALL location types
+            console.log('[Add to Map] Using Places API for:', location.name);
+            const searchQuery = location.area
+                ? `${location.name}, ${location.area}, ${activeChat.destination}`
+                : `${location.name}, ${activeChat.destination}`;
 
-                try {
-                    const placesResponse = await fetch('/api/google/places', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ query: searchQuery }),
-                    });
+            try {
+                const placesResponse = await fetch('/api/google/places', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ query: searchQuery }),
+                });
 
-                    if (placesResponse.ok) {
-                        const placesData = await placesResponse.json();
-                        console.log('[Add to Map] Places API result:', placesData.success, placesData.place?.name);
-                        if (placesData.success && placesData.place) {
-                            // Use coordinates from Places API - these are accurate for the business
-                            if (placesData.place.coordinates) {
-                                coords = placesData.place.coordinates as [number, number];
-                                console.log('[Add to Map] Got coords from Places API:', coords);
-                            }
-                            placeDetails = {
-                                placeId: placesData.place.placeId,
-                                address: placesData.place.address,
-                                rating: placesData.place.rating,
-                                reviewCount: placesData.place.reviewCount,
-                                photos: placesData.place.photos,
-                                website: placesData.place.website,
-                                phone: placesData.place.phone,
-                                priceLevel: placesData.place.priceLevel,
-                                openingHours: placesData.place.openingHours,
-                            };
+                if (placesResponse.ok) {
+                    const placesData = await placesResponse.json();
+                    console.log('[Add to Map] Places API result:', placesData.success, placesData.place?.name, 'coords:', placesData.place?.coordinates);
+                    if (placesData.success && placesData.place) {
+                        // Use coordinates from Places API - these are accurate for the location
+                        if (placesData.place.coordinates) {
+                            coords = placesData.place.coordinates as [number, number];
+                            console.log('[Add to Map] Got coords from Places API:', coords);
                         }
+                        placeDetails = {
+                            placeId: placesData.place.placeId,
+                            address: placesData.place.address,
+                            rating: placesData.place.rating,
+                            reviewCount: placesData.place.reviewCount,
+                            photos: placesData.place.photos,
+                            website: placesData.place.website,
+                            phone: placesData.place.phone,
+                            priceLevel: placesData.place.priceLevel,
+                            openingHours: placesData.place.openingHours,
+                        };
                     }
-                } catch (placesError) {
-                    console.warn('[Add to Map] Places API failed, falling back to geocode:', placesError);
                 }
+            } catch (placesError) {
+                console.warn('[Add to Map] Places API failed, falling back to geocode:', placesError);
             }
 
-            // Fall back to geocode API if Places didn't return coords
+            // Fall back to geocode API only if Places didn't return coords
             if (!coords) {
-                console.log('[Add to Map] Using Geocode API for:', location.name, 'context:', geocodeContext);
+                console.log('[Add to Map] Falling back to Geocode API for:', location.name, 'context:', geocodeContext);
                 const geocodeResponse = await fetch(`${API_URL}/api/geocode`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -668,38 +664,6 @@ export default function ChatInterface() {
                     if (geocodeData.success && geocodeData.coordinates) {
                         coords = geocodeData.coordinates as [number, number];
                         console.log('[Add to Map] Got coords from Geocode API:', coords);
-
-                        // If we don't have place details yet, try to get them
-                        if (!placeDetails) {
-                            try {
-                                const searchQuery = location.area
-                                    ? `${location.name}, ${location.area}, ${activeChat.destination}`
-                                    : `${location.name}, ${activeChat.destination}`;
-                                const placesResponse = await fetch('/api/google/places', {
-                                    method: 'POST',
-                                    headers: { 'Content-Type': 'application/json' },
-                                    body: JSON.stringify({ query: searchQuery, location: coords }),
-                                });
-                                if (placesResponse.ok) {
-                                    const placesData = await placesResponse.json();
-                                    if (placesData.success && placesData.place) {
-                                        placeDetails = {
-                                            placeId: placesData.place.placeId,
-                                            address: placesData.place.address,
-                                            rating: placesData.place.rating,
-                                            reviewCount: placesData.place.reviewCount,
-                                            photos: placesData.place.photos,
-                                            website: placesData.place.website,
-                                            phone: placesData.place.phone,
-                                            priceLevel: placesData.place.priceLevel,
-                                            openingHours: placesData.place.openingHours,
-                                        };
-                                    }
-                                }
-                            } catch (placesError) {
-                                console.warn('[Add to Map] Could not fetch place details:', placesError);
-                            }
-                        }
                     }
                 }
             }

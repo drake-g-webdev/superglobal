@@ -115,11 +115,12 @@ export type CostCategory =
 export interface ExtractedCost {
   name: string;
   category: CostCategory;
-  amount: number;
+  amount: number;  // Total calculated for trip duration
   quantity: number;
   unit: string;
-  notes: string;
+  notes: string;  // Includes original rate and calculation
   text_to_match?: string;  // AI-provided exact text to place button after
+  is_range?: boolean;  // True if extracted from a price range (e.g., "$10-15")
 }
 
 // Maps message index -> extracted costs for that message

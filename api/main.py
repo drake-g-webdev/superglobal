@@ -1485,11 +1485,12 @@ async def geocode_location(request: GeocodeRequest):
 class ExtractedCost(BaseModel):
     category: str  # accommodation, transport_local, transport_flights, food, activities, visa_border, sim_connectivity, moped_rental, misc
     name: str
-    amount: float  # USD
+    amount: float  # USD (total calculated for trip duration)
     quantity: float = 1.0
     unit: str = "trip"  # night, day, meal, trip, person
-    notes: str = ""
+    notes: str = ""  # Include original rate and calculation
     text_to_match: str = ""  # Exact text from original to place button after
+    is_range: bool = False  # True if extracted from a price range (e.g., "$10-15")
 
 
 class TouristTrapWarning(BaseModel):
@@ -1514,76 +1515,84 @@ COST_EXTRACTION_PROMPT = """You are an expert travel budget analyst. Extract ALL
 
 DESTINATION: {destination}
 NUMBER OF TRAVELERS: {num_travelers}
-TRIP DURATION: {trip_days} days (if known)
+TRIP DURATION: {trip_days} days (use this to calculate daily costs)
 
-=== EXTRACTION TIERS ===
+=== CRITICAL: HANDLE PRICE RANGES ===
+When you see a price range like "$70-$140" or "$10-15":
+- Extract ONCE with the MIDPOINT as the amount
+- ✅ "$70-$140/night" → amount: 105, notes: "Range: $70-$140/night"
+- ✅ "dorms go for $10-15" → amount: 12.50, notes: "Range: $10-15/night"
+- ❌ DO NOT create two separate entries for the same range
 
-TIER 1 - SPECIFIC NAMED ITEMS (highest priority):
-Extract any cost with a proper name you could Google:
-✅ "Secret Garden Hostel: $15/night" → name: "Secret Garden Hostel"
-✅ "Barisal cruise: $50" → name: "Barisal Cruise"
-✅ "Sundarbans wildlife cruise: $100" → name: "Sundarbans Wildlife Cruise"
-✅ "Claro SIM card: $10" → name: "Claro SIM Card"
+=== CALCULATE TOTALS USING TRIP DURATION ===
+When given daily/nightly rates, calculate the TOTAL for the trip:
+- ✅ "$15/night" with 14-day trip → amount: 210, quantity: 1, unit: "trip", notes: "$15/night × 14 nights"
+- ✅ "$10/day for food" with 14 days → amount: 140, quantity: 1, unit: "trip", notes: "$10/day × 14 days"
+- ❌ DO NOT output amount: 15, quantity: 14 (this creates confusing UX)
 
-TIER 2 - BUDGET LINE ITEMS (from structured breakdowns):
-When the text contains a budget table or numbered breakdown, extract each line item:
-✅ "Accommodation: $1,000" (from a budget table) → name: "Accommodation ({destination})"
-✅ "Food: $590" (calculated total) → name: "Food Budget"
-✅ "Local Transportation: $118" → name: "Local Transportation"
-✅ "Excursions and Activities: $400" → name: "Activities & Excursions"
-✅ "Miscellaneous Expenses: $100" → name: "Miscellaneous"
+=== CATEGORY-AWARE EXTRACTION ===
+Different cost types have different behaviors:
 
-TIER 3 - CALCULATED DAILY COSTS:
-When daily rates are given with trip duration, extract the calculated total:
-✅ "Street food: $10/day for 59 days" → name: "Daily Food", amount: 590, quantity: 1, unit: "trip"
-✅ "Rickshaws: $2/day" (with 59 day trip) → name: "Local Transport (Daily)", amount: 118, quantity: 1, unit: "trip"
+ONE-TIME COSTS (quantity always 1, unit: "trip"):
+- Visa fees, border fees
+- SIM cards, phone plans
+- Insurance
+- One-time tours/excursions
+- Flights
+
+CALCULATED TOTALS (use trip duration):
+- Accommodation: daily rate × trip days
+- Food: daily rate × trip days
+- Local transport: daily rate × trip days
+
+=== WHAT TO EXTRACT ===
+1. SPECIFIC NAMED ITEMS: "Secret Garden Hostel: $15/night" → Calculate total
+2. BUDGET LINE ITEMS: From tables/breakdowns
+3. RANGE PRICES: Use midpoint, note the range
+4. DAILY RATES: Calculate total for trip
 
 === WHAT TO SKIP ===
-❌ "budget around $50/day" → Skip (target/goal, not actual expense)
-❌ "you can get by on $40/day" → Skip (general advice)
-❌ "Total Estimated Budget: $2,308" → Skip (grand total, not line item)
-❌ Duplicate costs (if "Food: $590" is in table AND calculated above, only extract once)
+❌ General advice: "budget around $50/day", "you can get by on..."
+❌ Grand totals: "Total Estimated Budget: $2,308"
+❌ Duplicates: Same cost mentioned multiple times
+❌ Vague amounts: "a few dollars", "relatively cheap"
+
+=== DEDUPLICATION RULES ===
+If the same expense appears multiple ways, extract ONCE with:
+- The most specific name
+- The calculated total (not daily rate)
+- The most complete notes
 
 === OUTPUT FORMAT ===
-
 For each cost, provide:
-- category: One of: accommodation, transport_local, transport_flights, food, activities, visa_border, sim_connectivity, moped_rental, gear, insurance, misc
-- name: Descriptive name (specific venue OR category name with context)
-- amount: Total cost in USD for this line item
-- quantity: Usually 1 for totals, or actual count for per-unit items
-- unit: One of: night, day, meal, trip, person, month, week
-- notes: Brief context (e.g., "2 months", "59 days @ $10/day")
-- text_to_match: EXACT phrase from text where this cost appears (for button placement)
+- category: accommodation, transport_local, transport_flights, food, activities, visa_border, sim_connectivity, moped_rental, gear, insurance, misc
+- name: Descriptive name (venue name OR category with context)
+- amount: TOTAL cost in USD for this line item (calculated for trip duration)
+- quantity: Always 1 for calculated totals
+- unit: "trip" for calculated totals, or specific unit for one-time items
+- notes: Include original rate and calculation (e.g., "$15/night × 14 nights", "Range: $10-15")
+- text_to_match: EXACT phrase from text (include the price for accurate matching)
+- is_range: true if this was extracted from a price range
 
 === TOURIST TRAPS ===
-Also extract any warnings about scams or overpriced places:
+Extract warnings about scams or overpriced places:
 - name: The trap/scam name
 - description: What to watch out for
 - location: Where (optional)
 
-=== CRITICAL RULES ===
-1. Extract REAL planned expenses, not hypothetical advice
-2. For budget breakdowns, use the TOTAL calculated amount (not daily rate)
-3. Avoid duplicates - if the same expense appears multiple ways, extract once with the most specific name
-4. Convert local currencies to USD
-5. text_to_match should be unique and include the price for accurate button placement
-6. When a table/breakdown exists, those ARE the costs to extract - they represent the actual budget
-
 === EXAMPLE INPUT ===
-"### Budget Breakdown
-1. Accommodation: $500/month for 2 months = $1,000
-2. Food: $10/day x 59 days = $590
-3. Sundarbans Tour: $100
-4. Entry Fees: $50
-Total: $1,740"
+"Hostels in Quito range from $10-15/night for dorms. Food is cheap - street meals cost $2-5.
+A 2-week trip would need around:
+- Hostels: ~$12/night average
+- Food: $10/day
+- SIM card: $15 one-time"
 
-=== EXAMPLE OUTPUT ===
+=== EXAMPLE OUTPUT (for 14-day trip) ===
 {{
   "costs": [
-    {{"category": "accommodation", "name": "Accommodation (2 months)", "amount": 1000, "quantity": 1, "unit": "trip", "notes": "$500/month for 2 months", "text_to_match": "Accommodation: $500/month for 2 months = $1,000"}},
-    {{"category": "food", "name": "Daily Food Budget", "amount": 590, "quantity": 1, "unit": "trip", "notes": "$10/day for 59 days", "text_to_match": "Food: $10/day x 59 days = $590"}},
-    {{"category": "activities", "name": "Sundarbans Tour", "amount": 100, "quantity": 1, "unit": "trip", "notes": "Wildlife cruise", "text_to_match": "Sundarbans Tour: $100"}},
-    {{"category": "activities", "name": "Entry Fees", "amount": 50, "quantity": 1, "unit": "trip", "notes": "Various attractions", "text_to_match": "Entry Fees: $50"}}
+    {{"category": "accommodation", "name": "Hostel Dorms (Quito)", "amount": 175, "quantity": 1, "unit": "trip", "notes": "$12.50/night avg (range $10-15) × 14 nights", "text_to_match": "$10-15/night for dorms", "is_range": true}},
+    {{"category": "food", "name": "Daily Food Budget", "amount": 140, "quantity": 1, "unit": "trip", "notes": "$10/day × 14 days", "text_to_match": "Food: $10/day"}},
+    {{"category": "sim_connectivity", "name": "SIM Card", "amount": 15, "quantity": 1, "unit": "trip", "notes": "One-time purchase", "text_to_match": "SIM card: $15"}}
   ],
   "tourist_traps": []
 }}
@@ -1643,7 +1652,8 @@ async def extract_costs(request: ExtractCostsRequest):
                     quantity=float(c.get("quantity", 1)),
                     unit=unit,
                     notes=c.get("notes", ""),
-                    text_to_match=c.get("text_to_match", "")
+                    text_to_match=c.get("text_to_match", ""),
+                    is_range=bool(c.get("is_range", False))
                 ))
 
         tourist_traps = []

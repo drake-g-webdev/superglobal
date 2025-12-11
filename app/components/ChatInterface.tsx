@@ -17,6 +17,7 @@ import CostDashboard from './CostDashboard';
 import BucketListPanel from './BucketListPanel';
 import PackingListPanel from './PackingListPanel';
 import EventsPanel from './EventsPanel';
+import BudgetReviewPanel from './BudgetReviewPanel';
 import { API_URL } from '../config/api';
 
 // Adventure-themed thinking messages with icons
@@ -243,7 +244,7 @@ export default function ChatInterface() {
             if (response.ok) {
                 const data = await response.json();
                 console.log('[Cost Extraction] API Response:', data);
-                const typedCosts: ExtractedCost[] = (data.costs || []).map((cost: { name: string; category: string; amount: number; quantity: number; unit: string; notes: string; text_to_match?: string }) => ({
+                const typedCosts: ExtractedCost[] = (data.costs || []).map((cost: { name: string; category: string; amount: number; quantity: number; unit: string; notes: string; text_to_match?: string; is_range?: boolean }) => ({
                     name: cost.name,
                     category: (cost.category as CostCategory) || 'misc',
                     amount: cost.amount || 0,
@@ -251,6 +252,7 @@ export default function ChatInterface() {
                     unit: cost.unit || 'trip',
                     notes: cost.notes || '',
                     text_to_match: cost.text_to_match || '',
+                    is_range: cost.is_range || false,
                 }));
 
                 console.log('[Cost Extraction] Extracted costs:', typedCosts.length, 'costs for message', messageIndex);
@@ -716,12 +718,7 @@ export default function ChatInterface() {
         setEditingCostMessageIndex(messageIndex);
     };
 
-    // Check if a cost is already in budget (by name)
-    const isCostInBudget = useCallback((costName: string): boolean => {
-        if (!activeChat) return false;
-        const nameLower = costName.toLowerCase();
-        return activeChat.tripCosts.items.some(item => item.name.toLowerCase() === nameLower);
-    }, [activeChat]);
+    // Note: isCostInBudget moved to BudgetReviewPanel for deduplication logic
 
     // Render message content with inline location and cost buttons
     const renderMessageContent = (content: string, messageIndex: number, isAssistant: boolean) => {
@@ -811,11 +808,7 @@ export default function ChatInterface() {
             }
         }
 
-        // Find costs that weren't matched inline (for fallback display)
-        const unmatchedCosts = costs.filter(cost => {
-            const costKey = `${cost.name.toLowerCase()}-${cost.amount}`;
-            return !shownCosts.has(costKey);
-        });
+        // Note: We no longer show inline cost buttons - BudgetReviewPanel handles all costs
 
         // Helper to render inline buttons from placeholders in text
         const renderTextWithButtons = (text: string): React.ReactNode => {
@@ -876,35 +869,8 @@ export default function ChatInterface() {
                                 </span>
                             );
                         }
-                    } else if (data.type === 'cost') {
-                        const cost = data.data as ExtractedCost;
-                        const isInBudget = isCostInBudget(cost.name) || addedCosts.has(cost.name.toLowerCase());
-
-                        if (!isInBudget) {
-                            parts.push(
-                                <button
-                                    key={`cost-btn-${keyIdx++}`}
-                                    onClick={() => openCostEditModal(cost, messageIndex)}
-                                    className="inline-flex items-center gap-0.5 px-1 py-0.5 rounded text-[10px] transition-colors align-middle mx-0.5 bg-green-600/30 hover:bg-green-600/50 text-green-400 hover:text-green-300 border border-green-500/30"
-                                    title={`Add ${cost.name} ($${cost.amount}) to budget`}
-                                >
-                                    <Plus size={10} />
-                                    <DollarSign size={10} />
-                                </button>
-                            );
-                        } else {
-                            parts.push(
-                                <span
-                                    key={`cost-check-${keyIdx++}`}
-                                    className="inline-flex items-center gap-0.5 px-1 py-0.5 rounded text-[10px] bg-green-600/20 text-green-400 align-middle mx-0.5"
-                                    title={`${cost.name} is in budget`}
-                                >
-                                    <Check size={10} />
-                                    <DollarSign size={10} />
-                                </span>
-                            );
-                        }
                     }
+                    // Note: Cost buttons removed - all costs now shown in BudgetReviewPanel below message
                 }
 
                 lastIndex = match.index + match[0].length;
@@ -969,6 +935,42 @@ export default function ChatInterface() {
             hr: () => <hr className="border-stone-700 my-4" />,
         };
 
+        // Handler for adding a single cost from BudgetReviewPanel
+        const handleAddSingleCost = (cost: ExtractedCost) => {
+            if (!activeChat) return;
+            addCostItem(activeChat.id, {
+                name: cost.name.trim(),
+                category: cost.category,
+                amount: cost.amount,
+                quantity: cost.quantity,
+                unit: cost.unit,
+                notes: cost.notes,
+                isEstimate: false,
+            });
+            setAddedCosts(prev => new Set([...prev, cost.name.toLowerCase()]));
+        };
+
+        // Handler for adding all costs from BudgetReviewPanel
+        const handleAddAllCosts = (costsToAdd: ExtractedCost[]) => {
+            if (!activeChat) return;
+            costsToAdd.forEach(cost => {
+                addCostItem(activeChat.id, {
+                    name: cost.name.trim(),
+                    category: cost.category,
+                    amount: cost.amount,
+                    quantity: cost.quantity,
+                    unit: cost.unit,
+                    notes: cost.notes,
+                    isEstimate: false,
+                });
+            });
+            setAddedCosts(prev => {
+                const newSet = new Set(prev);
+                costsToAdd.forEach(c => newSet.add(c.name.toLowerCase()));
+                return newSet;
+            });
+        };
+
         return (
             <>
                 <ReactMarkdown
@@ -977,47 +979,23 @@ export default function ChatInterface() {
                 >
                     {processedContent}
                 </ReactMarkdown>
-                {/* Show unmatched costs as a row at the end */}
-                {unmatchedCosts.length > 0 && (
-                    <div className="mt-2 flex flex-wrap gap-2 items-center">
-                        <span className="text-[10px] text-stone-500 uppercase font-bold">Costs mentioned:</span>
-                        {unmatchedCosts.map((cost, idx) => {
-                            const isInBudget = isCostInBudget(cost.name) || addedCosts.has(cost.name.toLowerCase());
-                            if (isInBudget) {
-                                return (
-                                    <span
-                                        key={`unmatched-cost-${idx}`}
-                                        className="inline-flex items-center gap-1 px-2 py-1 rounded text-[11px] bg-green-600/20 text-green-400"
-                                        title={`${cost.name} is in budget`}
-                                    >
-                                        <Check size={12} />
-                                        <DollarSign size={12} />
-                                        <span>{cost.name}</span>
-                                        <span className="text-green-300">${cost.amount}</span>
-                                    </span>
-                                );
-                            }
-                            return (
-                                <button
-                                    key={`unmatched-cost-${idx}`}
-                                    onClick={() => openCostEditModal(cost, messageIndex)}
-                                    className="inline-flex items-center gap-1 px-2 py-1 rounded text-[11px] transition-colors bg-green-600/30 hover:bg-green-600/50 text-green-400 hover:text-green-300 border border-green-500/30"
-                                    title={`Add ${cost.name} ($${cost.amount}) to budget`}
-                                >
-                                    <Plus size={12} />
-                                    <DollarSign size={12} />
-                                    <span>{cost.name}</span>
-                                    <span className="text-green-300">${cost.amount}</span>
-                                </button>
-                            );
-                        })}
-                    </div>
-                )}
                 {(isExtracting || isExtractingCosts) && (
                     <div className="mt-2 flex items-center gap-2 text-xs text-stone-500">
                         <Loader2 size={12} className="animate-spin" />
                         {isExtracting ? tMap('findingLocations') : 'Finding costs...'}
                     </div>
+                )}
+                {/* Budget Review Panel - shows all extracted costs with smart deduplication */}
+                {costs.length > 0 && !isExtractingCosts && (
+                    <BudgetReviewPanel
+                        costs={costs}
+                        existingBudgetItems={activeChat?.tripCosts?.items || []}
+                        touristTraps={activeChat?.touristTraps || []}
+                        onAddCost={handleAddSingleCost}
+                        onAddAllCosts={handleAddAllCosts}
+                        onEditCost={(cost) => openCostEditModal(cost, messageIndex)}
+                        tripDays={activeChat?.tripContext?.tripDurationDays || 14}
+                    />
                 )}
                 {/* Show extracted itinerary with "Use This Itinerary" button */}
                 {activeChat?.extractedItineraries?.[messageIndex]?.hasItinerary && (

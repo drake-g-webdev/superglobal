@@ -6,7 +6,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import ReactMarkdown, { Components } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import clsx from 'clsx';
-import { useChats, MapPinType, ExtractedLocation, MessageLocations, ExtractedCost, MessageCosts, CostCategory, ExtractedItinerary, MessageItineraries, ItineraryStop, PlaceDetails } from '../context/ChatsContext';
+import { useChats, MapPinType, ExtractedLocation, MessageLocations, ExtractedCost, MessageCosts, CostCategory, ExtractedItinerary, MessageItineraries, ItineraryStop, PlaceDetails, MapPin as MapPinData } from '../context/ChatsContext';
 import { useProfile } from '../context/ProfileContext';
 import { useTranslations } from '../context/LocaleContext';
 import ChatSidebar from './ChatSidebar';
@@ -85,7 +85,7 @@ function ThinkingAnimation() {
 }
 
 export default function ChatInterface() {
-    const { activeChat, updateChat, addMessage, addMapPin, removeMapPin, addTouristTrap, updateMapView, mergeConversationVariables, setExtractedLocations, setExtractedCosts, setExtractedItinerary, addCostItem, updateTripContext } = useChats();
+    const { chats, activeChat, updateChat, addMessage, addMapPin, removeMapPin, addTouristTrap, updateMapView, mergeConversationVariables, setExtractedLocations, setExtractedCosts, setExtractedItinerary, addCostItem, updateTripContext, updateMapPin } = useChats();
     const { profile, isProfileSet } = useProfile();
     const t = useTranslations('chat');
     const tProfile = useTranslations('profile');
@@ -420,6 +420,11 @@ export default function ChatInterface() {
         const extractedItinerary = activeChat.extractedItineraries?.[messageIndex];
         if (!extractedItinerary || !extractedItinerary.hasItinerary) return;
 
+        // Save sub-markers (non-itinerary pins that have a parentStopId) before clearing
+        // We'll re-link them to new itinerary stops after adding them
+        const subMarkers = activeChat.mapPins.filter(p => !p.isItineraryStop && p.parentStopId);
+        console.log('[Add Itinerary] Preserving', subMarkers.length, 'sub-markers to re-link');
+
         // Clear existing itinerary pins first
         const existingItineraryPins = activeChat.mapPins.filter(p => p.isItineraryStop);
         for (const pin of existingItineraryPins) {
@@ -547,8 +552,73 @@ export default function ChatInterface() {
             updateMapView(activeChat.id, firstCoords, 6); // Zoom out to see the route
         }
 
+        // Re-link sub-markers to nearest new itinerary stops
+        // We need to get the updated mapPins after adding the new itinerary stops
+        // Since state updates are async, we'll calculate based on geocoded coordinates
+        if (subMarkers.length > 0) {
+            console.log('[Add Itinerary] Re-linking', subMarkers.length, 'sub-markers to new stops');
+
+            // Build a list of new stop coordinates from geocodeCache
+            const newStopCoords: { name: string; coords: [number, number] }[] = [];
+            for (const stop of extractedItinerary.stops) {
+                const nameLower = stop.location.toLowerCase();
+                if (geocodeCache[nameLower]) {
+                    newStopCoords.push({ name: stop.location, coords: geocodeCache[nameLower] });
+                }
+            }
+
+            // Helper to find nearest stop
+            const findNearestNewStop = (coords: [number, number]): string | undefined => {
+                let nearestName: string | undefined;
+                let minDistance = Infinity;
+                const THRESHOLD_KM = 100;
+
+                for (const stop of newStopCoords) {
+                    const R = 6371;
+                    const dLat = (stop.coords[1] - coords[1]) * Math.PI / 180;
+                    const dLon = (stop.coords[0] - coords[0]) * Math.PI / 180;
+                    const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+                        Math.cos(coords[1] * Math.PI / 180) * Math.cos(stop.coords[1] * Math.PI / 180) *
+                        Math.sin(dLon / 2) * Math.sin(dLon / 2);
+                    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+                    const distance = R * c;
+
+                    if (distance < minDistance && distance < THRESHOLD_KM) {
+                        minDistance = distance;
+                        nearestName = stop.name;
+                    }
+                }
+                return nearestName;
+            };
+
+            // We need to wait a tick for the new pins to be in state, then update sub-markers
+            // Use setTimeout to let React state update
+            const chatId = activeChat.id;
+            setTimeout(() => {
+                // Get fresh chat state with new itinerary pins
+                const updatedChat = chats.find((c: { id: string }) => c.id === chatId);
+                if (!updatedChat) return;
+
+                const newItineraryPins = updatedChat.mapPins.filter((p: MapPinData) => p.isItineraryStop);
+
+                for (const subMarker of subMarkers) {
+                    const nearestStopName = findNearestNewStop(subMarker.coordinates);
+                    if (nearestStopName) {
+                        // Find the new pin ID for this stop name
+                        const newParentPin = newItineraryPins.find((p: MapPinData) =>
+                            p.name.toLowerCase() === nearestStopName.toLowerCase()
+                        );
+                        if (newParentPin) {
+                            updateMapPin(chatId, subMarker.id, { parentStopId: newParentPin.id });
+                            console.log('[Add Itinerary] Re-linked', subMarker.name, 'to', newParentPin.name);
+                        }
+                    }
+                }
+            }, 100);
+        }
+
         console.log('[Add Itinerary] Complete. Total stops:', extractedItinerary.stops.length, 'Failed:', failedStops.length);
-    }, [activeChat, updateTripContext, addMapPin, removeMapPin, updateMapView, tryGeocode]);
+    }, [activeChat, chats, updateTripContext, addMapPin, removeMapPin, updateMapView, updateMapPin, tryGeocode]);
 
     // No auto-extraction effect - we trigger extraction directly after receiving a response
 

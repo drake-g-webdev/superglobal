@@ -2,6 +2,7 @@ import NextAuth, { NextAuthOptions } from 'next-auth';
 import CredentialsProvider from 'next-auth/providers/credentials';
 import bcrypt from 'bcryptjs';
 import prisma from '@/app/lib/prisma';
+import { sendWelcomeEmail } from '@/app/lib/email';
 
 // NOTE: PrismaAdapter removed - it conflicts with CredentialsProvider + JWT strategy
 // The adapter is designed for OAuth providers that create database sessions,
@@ -45,6 +46,17 @@ export const authOptions: NextAuthOptions = {
               profileComplete: false,
             },
           });
+
+          // Send welcome email (don't await - let it send in background)
+          sendWelcomeEmail(newUser.email, newUser.name || 'Traveler')
+            .then((sent) => {
+              if (sent) {
+                console.log('[Auth] Welcome email sent to:', newUser.email);
+              }
+            })
+            .catch((err) => {
+              console.error('[Auth] Failed to send welcome email:', err);
+            });
 
           return {
             id: newUser.id,

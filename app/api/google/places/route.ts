@@ -69,14 +69,33 @@ export async function POST(request: NextRequest) {
 
       if (data.status === 'OK' && data.results?.length > 0) {
         const place = data.results[0];
-        console.log('[Places API] Found place:', place.name, 'photos:', place.photos?.length || 0);
+        const coords = place.geometry?.location ? [place.geometry.location.lng, place.geometry.location.lat] : null;
+
+        // Log all results to see what Google is returning
+        console.log('[Places API] ===== SEARCH RESULTS =====');
+        console.log('[Places API] Query:', query);
+        console.log('[Places API] Total results:', data.results.length);
+        data.results.slice(0, 5).forEach((r: { name: string; formatted_address: string; geometry?: { location?: { lat: number; lng: number } }; types?: string[] }, i: number) => {
+          console.log(`[Places API] Result ${i + 1}:`, {
+            name: r.name,
+            address: r.formatted_address,
+            coords: r.geometry?.location ? [r.geometry.location.lng, r.geometry.location.lat] : null,
+            types: r.types?.slice(0, 3),
+          });
+        });
+        console.log('[Places API] ===== SELECTED =====');
+        console.log('[Places API] Selected:', place.name);
+        console.log('[Places API] Address:', place.formatted_address);
+        console.log('[Places API] Coordinates:', coords);
+        console.log('[Places API] Types:', place.types);
+
         const result = {
           success: true,
           place: {
             placeId: place.place_id,
             name: place.name,
             address: place.formatted_address,
-            coordinates: place.geometry?.location ? [place.geometry.location.lng, place.geometry.location.lat] : null,
+            coordinates: coords,
             rating: place.rating,
             reviewCount: place.user_ratings_total,
             types: place.types,
@@ -86,11 +105,14 @@ export async function POST(request: NextRequest) {
             })) || [],
           },
         };
-        console.log('[Places API] Returning result with', result.place.photos.length, 'photos');
+        console.log('[Places API] Returning coords:', result.place.coordinates);
         return NextResponse.json(result);
       }
 
-      console.warn('[Places API] No results found. Status:', data.status, 'Error:', data.error_message);
+      console.warn('[Places API] ===== NO RESULTS =====');
+      console.warn('[Places API] Query that failed:', query);
+      console.warn('[Places API] Status:', data.status);
+      console.warn('[Places API] Error message:', data.error_message);
       return NextResponse.json({ success: false, error: data.status || 'No results found', errorMessage: data.error_message });
     }
 

@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { Send, MapPin, DollarSign, User, Settings, Compass, Calendar, Target, Map as MapIcon, Plus, Check, Loader2, MessageSquare, ChevronLeft, ChevronRight, Calculator, ListChecks, Backpack, CalendarDays, Mountain, Sailboat, Tent, Footprints, X, Menu, ArrowLeft, AlertTriangle } from 'lucide-react';
+import { Send, MapPin, DollarSign, User, Settings, Compass, Calendar, Target, Map as MapIcon, Plus, Check, Loader2, MessageSquare, ChevronLeft, ChevronRight, Calculator, ListChecks, Backpack, CalendarDays, Mountain, Sailboat, Tent, Footprints, X, Menu, ArrowLeft, AlertTriangle, RefreshCw } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import ReactMarkdown, { Components } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -988,28 +988,32 @@ export default function ChatInterface() {
                                         </span>
                                     )}
                                 </div>
-                                {activeChat.tripContext?.itineraryBreakdown && activeChat.tripContext.itineraryBreakdown.length > 0 ? (
-                                    <span className="flex items-center gap-1 text-xs bg-green-600/30 text-green-400 px-2 py-1 rounded">
-                                        <Check size={12} />
-                                        Added to Trip
-                                    </span>
-                                ) : matchesExpected ? (
-                                    <button
-                                        onClick={() => addItineraryToTrip(messageIndex)}
-                                        className="flex items-center gap-1 text-xs bg-orange-600 hover:bg-orange-500 text-white px-3 py-1.5 rounded-lg transition-colors font-medium"
-                                    >
-                                        <Plus size={12} />
-                                        Use This Itinerary
-                                    </button>
-                                ) : (
-                                    <span className="text-xs text-red-400/80 italic">
-                                        Ask for a {expectedDays}-day itinerary
-                                    </span>
-                                )}
+                                {/* Always allow adding/updating itinerary - even if days don't match or one already exists */}
+                                <button
+                                    onClick={() => addItineraryToTrip(messageIndex)}
+                                    className={clsx(
+                                        "flex items-center gap-1 text-xs px-3 py-1.5 rounded-lg transition-colors font-medium",
+                                        activeChat.tripContext?.itineraryBreakdown?.length > 0
+                                            ? "bg-blue-600 hover:bg-blue-500 text-white"
+                                            : "bg-orange-600 hover:bg-orange-500 text-white"
+                                    )}
+                                >
+                                    {activeChat.tripContext?.itineraryBreakdown?.length > 0 ? (
+                                        <>
+                                            <RefreshCw size={12} />
+                                            Update Itinerary
+                                        </>
+                                    ) : (
+                                        <>
+                                            <Plus size={12} />
+                                            Use This Itinerary
+                                        </>
+                                    )}
+                                </button>
                             </div>
                             {!matchesExpected && expectedDays > 0 && (
-                                <p className="text-xs text-red-400/70 mb-2">
-                                    Your trip is {expectedDays} days. Ask Sierra to adjust the itinerary to match.
+                                <p className="text-xs text-stone-400/70 mb-2">
+                                    Adding this will update your trip to {extractedItinerary.totalDays} days.
                                 </p>
                             )}
                             <div className="flex flex-wrap gap-1.5">

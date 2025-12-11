@@ -925,18 +925,15 @@ VAGUE_LOCATION_BLOCKLIST = {
 }
 
 # Patterns that indicate a location is too vague (regex patterns)
+# Be conservative - only block truly generic patterns, not named areas
 VAGUE_LOCATION_PATTERNS = [
-    r"^local\s+",           # Starts with "local"
-    r"^the\s+",             # Starts with "the" (e.g., "the markets")
-    r"\s+area$",            # Ends with "area"
-    r"\s+district$",        # Ends with "district"
-    r"\s+region$",          # Ends with "region"
+    r"^local\s+",           # Starts with "local" (e.g., "local markets")
+    r"^the\s+\w+$",         # "the X" where X is a single generic word (e.g., "the beach", "the market")
     r"^nearby\s+",          # Starts with "nearby"
     r"^various\s+",         # Starts with "various"
     r"^some\s+",            # Starts with "some"
     r"^many\s+",            # Starts with "many"
     r"^any\s+",             # Starts with "any"
-    r"^small\s+",           # Starts with "small"
     r"'s\s+(on-site|restaurant|cafe)$",  # Possessive + generic (e.g., "Resort's on-site restaurant")
 ]
 
@@ -979,70 +976,46 @@ def is_vague_location(name: str) -> bool:
     return False
 
 
-LOCATION_EXTRACTION_PROMPT = """Extract specific, named locations that can be pinned on a map.
+LOCATION_EXTRACTION_PROMPT = """Extract ALL specific, named locations from this text. Be thorough - extract every place that has a name.
 
-WHAT TO EXTRACT (specific named places):
-✅ "Karamjal Crocodile Breeding Center" - specific wildlife center
-✅ "Lawachara National Park" - specific park
-✅ "Katka" / "Kachikhali" - specific areas/spots
-✅ "Sundarbans" - specific region
-✅ "Nilkantha Tea Cabin" - specific restaurant
-✅ "Sreemangal" - specific town
-✅ "Grand Palace" - specific landmark
-✅ "Cox's Bazar" - specific beach/city
+EXTRACT THESE (they have names you can search on Google Maps):
+✅ Restaurants/Food: "Star Kabab", "Haji Biriyani", "Kacchi Bhai", "Nirob Hotel", "Café Mango"
+✅ Cafes: "North End Coffee Roasters", "Cafe Mosaico"
+✅ Historic sites: "Ahsan Manzil", "Lalbagh Fort", "Grand Palace"
+✅ Museums: "Rickshaw Art Museum", "National Museum"
+✅ Areas/Neighborhoods: "Sadarghat", "Dhaka University Area", "Old Town Quito"
+✅ Nature: "Sundarbans", "Lawachara National Park", "Karamjal Crocodile Breeding Center"
+✅ Cities/Towns: "Cox's Bazar", "Sreemangal", "Katka"
 
-WHAT NOT TO EXTRACT (generic categories):
-❌ "local markets" / "markets" / "the market"
-❌ "street food stalls" / "food stalls"
-❌ "small eateries" / "local restaurants"
-❌ "fishing villages" / "villages" (generic)
-❌ "walking trails" / "trails" (generic)
-❌ "on-site restaurant" / "hotel restaurant"
-❌ "the old town" / "old quarter"
+DO NOT EXTRACT (generic categories without specific names):
+❌ "local markets" / "street food stalls" / "small eateries"
+❌ "local vendors" / "food carts" / "tea shops" (without a name)
+❌ "the waterfront" / "the beach" / "hiking trails"
 
-The key question: Does it have a PROPER NAME that you could search on Google Maps?
-- "Karamjal Crocodile Breeding Center" → YES, extract it
-- "crocodile breeding centers" → NO, generic category
-- "Katka" → YES, it's a named location
-- "tiger sighting spots" → NO, generic description
+IMPORTANT: If a place has a NAME (like "Star Kabab" or "Sadarghat"), EXTRACT IT.
+Only skip truly generic phrases like "local restaurants" or "street food".
 
-For each location, provide:
-- name: The exact proper name
-- type: accommodation, restaurant, activity, historic, transport, city, or other
-- description: Brief description (1 sentence)
-- area: The city/region for geocoding (e.g., "Sundarbans", "Bangladesh")
-
-TYPE DEFINITIONS:
-- activity: Parks, wildlife centers, conservation areas, trails, tours, beaches, natural attractions
-- historic: Museums, temples, monuments, heritage sites
-- restaurant: Named restaurants, cafes, bars
-- accommodation: Named hostels, hotels, guesthouses
-- transport: Named stations, airports, terminals
-- city: Towns, villages, named neighborhoods, named areas
-- other: Other specific named places
-
-RULES:
-1. Extract ALL places that have proper names
-2. DO NOT extract generic descriptions without specific names
-3. Named areas like "Katka", "Kachikhali" ARE specific - extract them
-4. Wildlife centers, breeding centers, conservation centers with names ARE specific
-5. If unsure whether something is a proper name, lean toward extracting it
+For each location provide:
+- name: Exact name as written
+- type: restaurant, historic, activity, accommodation, transport, city, or other
+- description: One sentence description
+- area: City/region for geocoding
 
 TEXT TO ANALYZE:
 {text}
 
-Respond with ONLY a JSON array:
+Respond with a JSON array. Example:
 
-Example input: "Visit Karamjal Crocodile Breeding Center and head to Katka for tiger spotting"
+Input: "Check out Star Kabab for biryani and visit Lalbagh Fort for history"
 [
-  {{"name": "Karamjal Crocodile Breeding Center", "type": "activity", "description": "Crocodile conservation center", "area": "Sundarbans"}},
-  {{"name": "Katka", "type": "activity", "description": "Tiger sighting area", "area": "Sundarbans"}}
+  {{"name": "Star Kabab", "type": "restaurant", "description": "Famous for biryani", "area": "Dhaka"}},
+  {{"name": "Lalbagh Fort", "type": "historic", "description": "17th-century Mughal fort", "area": "Dhaka"}}
 ]
 
-Example input: "Explore local markets and try street food"
+Input: "Try the local street food and visit some markets"
 []
 
-Return [] only if there are truly NO named places in the text.
+Extract ALL named places. Return [] ONLY if there are zero named places.
 """
 
 
@@ -1053,8 +1026,8 @@ async def extract_locations(request: ExtractLocationsRequest):
     import httpx
 
     try:
-        # Use a fast model for extraction
-        extraction_llm = ChatOpenAI(model="gpt-4o-mini", temperature=0)
+        # Use gpt-4o for better extraction accuracy (was gpt-4o-mini but it missed too many locations)
+        extraction_llm = ChatOpenAI(model="gpt-4o", temperature=0)
 
         prompt = LOCATION_EXTRACTION_PROMPT.format(text=request.response_text)
         result = extraction_llm.invoke(prompt)

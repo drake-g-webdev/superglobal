@@ -12,14 +12,14 @@ export default function LandingPage() {
         {/* Background Image */}
         <div className="absolute inset-0">
           <Image
-            src="/images/blue-lake.jpg"
-            alt="Mountain lake adventure"
+            src="/images/market-huaraz.jpg"
+            alt="Local market in Huaraz, Peru"
             fill
             className="object-cover"
             priority
           />
           {/* Gradient overlay for readability */}
-          <div className="absolute inset-0 bg-gradient-to-b from-stone-900/70 via-stone-900/50 to-stone-900" />
+          <div className="absolute inset-0 bg-gradient-to-b from-stone-900/80 via-stone-900/60 to-stone-900" />
         </div>
 
         {/* Navigation */}
@@ -80,58 +80,6 @@ export default function LandingPage() {
             <svg className="w-6 h-6 text-white/60" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 14l-7 7m0 0l-7-7m7 7V3" />
             </svg>
-          </div>
-        </div>
-      </div>
-
-      {/* Photo Strip Section */}
-      <div className="relative py-16 overflow-hidden">
-        <div className="max-w-6xl mx-auto px-6">
-          <p className="text-center text-stone-400 text-sm uppercase tracking-widest mb-8">
-            Built by travelers, for travelers
-          </p>
-
-          {/* Polaroid-style photo gallery */}
-          <div className="flex flex-col md:flex-row justify-center items-center gap-6 md:gap-8">
-            {/* Photo 1 - Market */}
-            <div className="transform -rotate-2 hover:rotate-0 transition-transform duration-300">
-              <div className="relative bg-stone-100 p-3 pb-14 shadow-xl rounded-sm">
-                <div className="relative w-64 h-44 overflow-hidden">
-                  <Image
-                    src="/images/market-huaraz.jpg"
-                    alt="Local market in Huaraz"
-                    fill
-                    className="object-cover"
-                  />
-                </div>
-                <p
-                  className="absolute bottom-4 left-0 right-0 text-center text-stone-600 text-sm"
-                  style={{ fontFamily: 'Georgia, serif', fontStyle: 'italic' }}
-                >
-                  Huaraz, Peru
-                </p>
-              </div>
-            </div>
-
-            {/* Photo 2 - Surf */}
-            <div className="transform rotate-1 hover:rotate-0 transition-transform duration-300 md:-mt-4">
-              <div className="relative bg-stone-100 p-3 pb-14 shadow-xl rounded-sm">
-                <div className="relative w-64 h-44 overflow-hidden">
-                  <Image
-                    src="/images/surf.jpg"
-                    alt="Surfing with friends"
-                    fill
-                    className="object-cover"
-                  />
-                </div>
-                <p
-                  className="absolute bottom-4 left-0 right-0 text-center text-stone-600 text-sm"
-                  style={{ fontFamily: 'Georgia, serif', fontStyle: 'italic' }}
-                >
-                  Pacific Coast
-                </p>
-              </div>
-            </div>
           </div>
         </div>
       </div>
@@ -214,19 +162,27 @@ export default function LandingPage() {
         </div>
       </div>
 
-      {/* Beta CTA Section */}
+      {/* Beta CTA Section with Lake Background */}
       <div className="relative overflow-hidden">
-        {/* Subtle background texture */}
-        <div className="absolute inset-0 bg-gradient-to-r from-orange-600/10 via-orange-500/5 to-orange-600/10" />
-        <div className="absolute inset-0 border-y border-orange-500/20" />
+        {/* Background Image */}
+        <div className="absolute inset-0">
+          <Image
+            src="/images/blue-lake.jpg"
+            alt="Mountain lake adventure"
+            fill
+            className="object-cover"
+          />
+          {/* Dark overlay for text readability */}
+          <div className="absolute inset-0 bg-stone-900/70" />
+        </div>
 
-        <div className="relative max-w-4xl mx-auto px-6 py-16 text-center">
-          <div className="inline-flex items-center gap-2 bg-stone-800/50 border border-orange-500/30 rounded-full px-4 py-2 mb-6">
+        <div className="relative max-w-4xl mx-auto px-6 py-20 text-center">
+          <div className="inline-flex items-center gap-2 bg-stone-900/50 backdrop-blur-sm border border-orange-500/30 rounded-full px-4 py-2 mb-6">
             <Sparkles size={16} className="text-orange-400" />
             <span className="text-orange-300 text-sm font-medium">Now accepting beta testers</span>
           </div>
-          <h2 className="text-3xl font-bold mb-4">Want early access?</h2>
-          <p className="text-stone-300 mb-8 text-lg">
+          <h2 className="text-3xl font-bold mb-4 drop-shadow-lg">Want early access?</h2>
+          <p className="text-stone-200 mb-8 text-lg drop-shadow-md">
             Join our beta program and help shape the future of travel planning.
           </p>
           <Link

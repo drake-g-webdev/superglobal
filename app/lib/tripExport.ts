@@ -437,21 +437,25 @@ export async function exportTripToPDF(
       pdf.setTextColor(COLORS.white);
       pdf.text(String(index + 1), margin + 4, y + 0.5, { align: 'center' });
 
-      // Stop name - truncate if too long
-      pdf.setFont('helvetica', 'bold');
-      pdf.setFontSize(12);
-      pdf.setTextColor(COLORS.stone800);
-      const maxLocationWidth = contentWidth - 50; // Leave room for days badge
-      const truncatedLocation = truncateText(stop.location, maxLocationWidth);
-      pdf.text(truncatedLocation, margin + 12, y);
-
-      // Days badge - positioned after the location name
+      // Days badge text (measure first to know how much space to reserve)
       const daysText = `${stop.days} day${stop.days !== 1 ? 's' : ''}`;
       pdf.setFont('helvetica', 'normal');
       pdf.setFontSize(9);
+      const daysWidth = pdf.getTextWidth(daysText);
+
+      // Stop name - truncate to leave room for days badge
+      pdf.setFont('helvetica', 'bold');
+      pdf.setFontSize(12);
+      pdf.setTextColor(COLORS.stone800);
+      const maxLocationWidth = contentWidth - 20 - daysWidth - 10; // 20 for circle+padding, 10 for gap
+      const truncatedLocation = truncateText(stop.location, maxLocationWidth);
+      pdf.text(truncatedLocation, margin + 12, y);
+
+      // Days badge - positioned at fixed location on the right
+      pdf.setFont('helvetica', 'normal');
+      pdf.setFontSize(9);
       pdf.setTextColor(COLORS.stone500);
-      const actualLocationWidth = pdf.getTextWidth(truncatedLocation);
-      pdf.text(daysText, margin + 12 + actualLocationWidth + 5, y);
+      pdf.text(daysText, pageWidth - margin - daysWidth, y);
 
       y += 6;
 

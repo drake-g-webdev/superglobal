@@ -57,10 +57,11 @@ export default function LoginPage() {
         return;
       }
 
-      router.push('/app');
+      // Use window.location for a hard redirect to ensure session cookie is sent
+      console.log('[Auth] Redirecting to /app...');
+      window.location.href = '/app';
     } catch (err) {
       setError('An unexpected error occurred');
-    } finally {
       setIsLoading(false);
     }
   };

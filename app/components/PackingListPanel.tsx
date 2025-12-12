@@ -82,7 +82,6 @@ export default function PackingListPanel() {
           accommodation_style: activeChat.tripContext?.accommodationStyles?.[0] || 'hostel_dorm',
           pack_weight: isProfileSet ? profile.packWeight : 'moderate',
           electronics_tolerance: isProfileSet ? profile.electronicsTolerance : 'medium',
-          hygiene_threshold: isProfileSet ? profile.hygieneThreshold : 'every_3_days',
           travel_style: isProfileSet ? profile.travelStyle : 'solo',
           female_traveler_concerns: isProfileSet ? profile.femaleTravelerConcerns : false,
         }),

@@ -326,14 +326,11 @@ export default function ProfilePanel({ isOpen, onClose }: ProfilePanelProps) {
   // Local state for text inputs
   const [localName, setLocalName] = useState(profile.name || '');
   const [localOrigin, setLocalOrigin] = useState(profile.countryOfOrigin || '');
-  const [localPassport, setLocalPassport] = useState(profile.passportCountry || '');
   const [showOriginSuggestions, setShowOriginSuggestions] = useState(false);
-  const [showPassportSuggestions, setShowPassportSuggestions] = useState(false);
   const [countryInput, setCountryInput] = useState('');
   const [bucketInput, setBucketInput] = useState('');
   const [interestInput, setInterestInput] = useState('');
   const [restrictionInput, setRestrictionInput] = useState('');
-  const [localBudget, setLocalBudget] = useState(String(profile.monthlyBudget || 1500));
 
   // Delete account state
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
@@ -377,8 +374,6 @@ export default function ProfilePanel({ isOpen, onClose }: ProfilePanelProps) {
     if (isOpen) {
       setLocalName(profile.name || '');
       setLocalOrigin(profile.countryOfOrigin || '');
-      setLocalPassport(profile.passportCountry || '');
-      setLocalBudget(String(profile.monthlyBudget || 1500));
     }
   }, [isOpen, profile]);
 
@@ -388,19 +383,8 @@ export default function ProfilePanel({ isOpen, onClose }: ProfilePanelProps) {
     }
   };
 
-  const handleBudgetBlur = () => {
-    const num = parseInt(localBudget) || 1500;
-    if (num !== profile.monthlyBudget) {
-      updateProfile({ monthlyBudget: num });
-    }
-  };
-
   const filteredOriginSuggestions = (localOrigin?.length || 0) > 0
     ? COUNTRIES.filter(c => c.toLowerCase().startsWith(localOrigin.toLowerCase())).slice(0, 8)
-    : [];
-
-  const filteredPassportSuggestions = (localPassport?.length || 0) > 0
-    ? COUNTRIES.filter(c => c.toLowerCase().startsWith(localPassport.toLowerCase())).slice(0, 8)
     : [];
 
   const handleAddTag = (field: 'countriesVisited' | 'bucketList' | 'interests' | 'restrictions', value: string) => {
@@ -477,30 +461,6 @@ export default function ProfilePanel({ isOpen, onClose }: ProfilePanelProps) {
                         {filteredOriginSuggestions.map(country => (
                           <button key={country} type="button" onMouseDown={(e) => e.preventDefault()}
                             onClick={() => { setLocalOrigin(country); updateProfile({ countryOfOrigin: country }); setShowOriginSuggestions(false); }}
-                            className="w-full text-left px-3 py-2 text-sm hover:bg-stone-700">
-                            {country}
-                          </button>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-
-                  <div className="relative">
-                    <label className="text-xs text-stone-400 uppercase font-bold">{t('passportCountry')}</label>
-                    <input
-                      type="text"
-                      value={localPassport}
-                      onChange={(e) => { setLocalPassport(e.target.value); setShowPassportSuggestions(true); }}
-                      onFocus={() => setShowPassportSuggestions(true)}
-                      onBlur={() => { setTimeout(() => setShowPassportSuggestions(false), 200); handleTextBlur('passportCountry', localPassport); }}
-                      placeholder={t('passportPlaceholder')}
-                      className="w-full bg-stone-800 border border-stone-700 rounded px-3 py-2 text-sm mt-1 focus:outline-none focus:border-orange-500"
-                    />
-                    {showPassportSuggestions && filteredPassportSuggestions.length > 0 && (
-                      <div className="absolute z-10 w-full mt-1 bg-stone-800 border border-stone-700 rounded-lg shadow-lg max-h-48 overflow-y-auto">
-                        {filteredPassportSuggestions.map(country => (
-                          <button key={country} type="button" onMouseDown={(e) => e.preventDefault()}
-                            onClick={() => { setLocalPassport(country); updateProfile({ passportCountry: country }); setShowPassportSuggestions(false); }}
                             className="w-full text-left px-3 py-2 text-sm hover:bg-stone-700">
                             {country}
                           </button>
@@ -651,27 +611,6 @@ export default function ProfilePanel({ isOpen, onClose }: ProfilePanelProps) {
                         </button>
                       ))}
                     </div>
-                  </div>
-
-                  <div>
-                    <label className="text-xs text-stone-400 uppercase font-bold mb-2 block">{t('incomeType')}</label>
-                    <EnumSelector
-                      value={profile.incomeType || 'savings_only'}
-                      onChange={(v) => updateProfile({ incomeType: v })}
-                      options={['remote_worker', 'seasonal_worker', 'savings_only', 'passive_income']}
-                      labels={{ remote_worker: `💻 ${t('remoteWorker')}`, seasonal_worker: `🌾 ${t('seasonalWorker')}`, savings_only: `🏦 ${t('savingsOnly')}`, passive_income: `📈 ${t('passiveIncome')}` }}
-                    />
-                  </div>
-
-                  <div>
-                    <label className="text-xs text-stone-400 uppercase font-bold">{t('monthlyBudget')}</label>
-                    <input
-                      type="number"
-                      value={localBudget}
-                      onChange={(e) => setLocalBudget(e.target.value)}
-                      onBlur={handleBudgetBlur}
-                      className="w-full bg-stone-800 border border-stone-700 rounded px-3 py-2 text-sm mt-1 focus:outline-none focus:border-orange-500"
-                    />
                   </div>
                 </div>
               </Section>

@@ -299,7 +299,6 @@ export function ProfileProvider({ children }: { children: ReactNode }) {
       // Check if DB profile has meaningful data (not just defaults)
       const dbHasMeaningfulData = dbProfile && (
         dbProfile.countryOfOrigin ||
-        dbProfile.passportCountry ||
         dbProfile.riskTolerance !== 'medium' ||
         dbProfile.travelPace !== 'moderate'
       );

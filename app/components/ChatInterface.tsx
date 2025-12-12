@@ -380,13 +380,19 @@ export default function ChatInterface() {
 
     // Helper to try geocoding with multiple query variations
     const tryGeocode = useCallback(async (location: string, destination: string): Promise<[number, number] | null> => {
+        // Skip if location is empty
+        if (!location?.trim()) {
+            console.warn('[Geocode] Skipping empty location');
+            return null;
+        }
+
         // List of query variations to try
         const variations = [
-            { place: location, context: destination },
-            { place: `${location}, ${destination}`, context: destination },
-            { place: location.replace(/\s+(Valley|Region|Area|District|Province)$/i, ''), context: destination },
-            { place: `${location} city`, context: destination },
-        ];
+            { place: location.trim(), context: destination },
+            { place: `${location.trim()}, ${destination}`, context: destination },
+            { place: location.trim().replace(/\s+(Valley|Region|Area|District|Province)$/i, ''), context: destination },
+            { place: `${location.trim()} city`, context: destination },
+        ].filter(v => v.place.trim()); // Filter out any empty variations
 
         for (const query of variations) {
             try {
@@ -498,16 +504,17 @@ export default function ChatInterface() {
                     `${stop.location} ${destination}`,
                     firstWord.length > 3 ? firstWord : stop.location,
                     words.length > 1 ? words.slice(0, 2).join(' ') : stop.location,
-                ];
+                ].filter(q => q?.trim()); // Filter out empty queries
 
                 let found = false;
                 for (const query of retryQueries) {
+                    if (!query?.trim()) continue; // Skip empty queries
                     try {
                         const response = await fetch(`${API_URL}/api/geocode`, {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify({
-                                place_name: query,
+                                place_name: query.trim(),
                                 context: destination,
                             }),
                         });
@@ -697,13 +704,13 @@ export default function ChatInterface() {
             }
 
             // Fall back to geocode API only if Places didn't return coords
-            if (!coords) {
+            if (!coords && location.name?.trim()) {
                 console.log('[Add to Map] Falling back to Geocode API for:', location.name, 'context:', geocodeContext);
                 const geocodeResponse = await fetch(`${API_URL}/api/geocode`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
-                        place_name: location.name,
+                        place_name: location.name.trim(),
                         context: geocodeContext,
                     }),
                 });

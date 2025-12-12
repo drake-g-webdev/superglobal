@@ -1,7 +1,7 @@
 "use client";
 
 import Link from 'next/link';
-import { Globe, MapPin, DollarSign, MessageSquare, Backpack, ArrowRight, Sparkles } from 'lucide-react';
+import { Globe, MapPin, DollarSign, MessageSquare, Backpack, Sparkles } from 'lucide-react';
 
 export default function LandingPage() {
   return (
@@ -20,23 +20,17 @@ export default function LandingPage() {
           {/* Hide nav buttons on mobile - hero CTA buttons are visible */}
           <div className="hidden md:flex items-center gap-4">
             <Link
-              href="/beta"
-              className="flex items-center gap-1.5 text-orange-400 hover:text-orange-300 transition-colors"
-            >
-              <Sparkles size={16} />
-              Join Beta
-            </Link>
-            <Link
               href="/auth/login"
               className="text-stone-300 hover:text-white transition-colors"
             >
               Log in
             </Link>
             <Link
-              href="/auth/signup"
-              className="bg-orange-600 hover:bg-orange-700 text-white px-4 py-2 rounded-lg font-medium transition-colors"
+              href="/beta"
+              className="flex items-center gap-2 bg-orange-600 hover:bg-orange-700 text-white px-4 py-2 rounded-lg font-medium transition-colors"
             >
-              Sign up
+              <Sparkles size={16} />
+              Join Beta
             </Link>
           </div>
         </nav>
@@ -48,14 +42,15 @@ export default function LandingPage() {
             <span className="text-orange-500"> great adventure</span>
           </h1>
           <p className="text-xl text-stone-300 mb-8 max-w-2xl mx-auto">
-            Plan your trip with a smart travel assistant that knows hostels, local food, and off-the-beaten-path experiences.
+            Collaborate with a smart travel assistant that knows your travel style, budget, and preferences to build the perfect trip plan.
           </p>
           <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
             <Link
-              href="/auth/signup"
+              href="/beta"
               className="bg-orange-600 hover:bg-orange-700 text-white px-8 py-4 rounded-xl font-semibold text-lg transition-colors flex items-center gap-2"
             >
-              Start Planning <ArrowRight size={20} />
+              <Sparkles size={20} />
+              Join Beta
             </Link>
             <Link
               href="/auth/login"
@@ -82,7 +77,7 @@ export default function LandingPage() {
             </div>
             <h3 className="text-xl font-semibold mb-2">Smart Travel Advisor</h3>
             <p className="text-stone-400">
-              Get personalized recommendations for hostels, restaurants, activities, and hidden gems based on your travel style and budget.
+              Get personalized recommendations for hostels, restaurants, and activities based on your travel style and budget.
             </p>
           </div>
 
@@ -156,21 +151,13 @@ export default function LandingPage() {
           <p className="text-stone-300 mb-8 text-lg">
             Join our beta program and help shape the future of travel planning.
           </p>
-          <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
-            <Link
-              href="/beta"
-              className="inline-flex items-center gap-2 bg-orange-600 hover:bg-orange-700 text-white px-8 py-4 rounded-xl font-semibold text-lg transition-colors"
-            >
-              <Sparkles size={20} />
-              Schedule a Call
-            </Link>
-            <Link
-              href="/auth/signup"
-              className="inline-flex items-center gap-2 text-stone-300 hover:text-white px-8 py-4 rounded-xl font-medium text-lg transition-colors border border-stone-700 hover:border-stone-600"
-            >
-              Or sign up now <ArrowRight size={20} />
-            </Link>
-          </div>
+          <Link
+            href="/beta"
+            className="inline-flex items-center gap-2 bg-orange-600 hover:bg-orange-700 text-white px-8 py-4 rounded-xl font-semibold text-lg transition-colors"
+          >
+            <Sparkles size={20} />
+            Schedule a Call
+          </Link>
         </div>
       </div>
 

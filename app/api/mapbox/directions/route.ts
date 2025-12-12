@@ -70,23 +70,57 @@ export async function POST(request: NextRequest) {
     const response = await fetch(directionsUrl);
     const data = await response.json();
 
+    // Format totals
+    const formatDistance = (meters: number) => {
+      if (meters < 1000) return `${Math.round(meters)} m`;
+      return `${(meters / 1000).toFixed(1)} km`;
+    };
+
+    const formatDuration = (seconds: number) => {
+      const hours = Math.floor(seconds / 3600);
+      const minutes = Math.floor((seconds % 3600) / 60);
+      if (hours > 0) {
+        return `${hours} hr ${minutes} min`;
+      }
+      return `${minutes} min`;
+    };
+
+    // Encode a simple polyline from two points (for straight-line fallback)
+    const encodeSimplePolyline = (coords: number[][]): string => {
+      let encoded = '';
+      let prevLat = 0;
+      let prevLng = 0;
+
+      for (const [lng, lat] of coords) {
+        const latInt = Math.round(lat * 1e5);
+        const lngInt = Math.round(lng * 1e5);
+
+        encoded += encodeNumber(latInt - prevLat);
+        encoded += encodeNumber(lngInt - prevLng);
+
+        prevLat = latInt;
+        prevLng = lngInt;
+      }
+
+      return encoded;
+    };
+
+    const encodeNumber = (num: number): string => {
+      let sgn_num = num << 1;
+      if (num < 0) {
+        sgn_num = ~sgn_num;
+      }
+      let encoded = '';
+      while (sgn_num >= 0x20) {
+        encoded += String.fromCharCode((0x20 | (sgn_num & 0x1f)) + 63);
+        sgn_num >>= 5;
+      }
+      encoded += String.fromCharCode(sgn_num + 63);
+      return encoded;
+    };
+
     if (data.code === 'Ok' && data.routes?.length > 0) {
       const route = data.routes[0];
-
-      // Format totals
-      const formatDistance = (meters: number) => {
-        if (meters < 1000) return `${Math.round(meters)} m`;
-        return `${(meters / 1000).toFixed(1)} km`;
-      };
-
-      const formatDuration = (seconds: number) => {
-        const hours = Math.floor(seconds / 3600);
-        const minutes = Math.floor((seconds % 3600) / 60);
-        if (hours > 0) {
-          return `${hours} hr ${minutes} min`;
-        }
-        return `${minutes} min`;
-      };
 
       const result: DirectionsRoute = {
         legs: route.legs.map((leg: { distance: number; duration: number }) => ({
@@ -106,6 +140,52 @@ export async function POST(request: NextRequest) {
       };
 
       return NextResponse.json({ success: true, route: result });
+    }
+
+    // NoRoute fallback: Create a straight-line route (for islands, ferries, etc.)
+    if (data.code === 'NoRoute' || data.code === 'NoSegment') {
+      // Calculate straight-line distance using Haversine formula
+      const toRad = (deg: number) => deg * Math.PI / 180;
+      const lat1 = toRad(origin[1]);
+      const lat2 = toRad(destination[1]);
+      const dLat = toRad(destination[1] - origin[1]);
+      const dLng = toRad(destination[0] - origin[0]);
+
+      const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+                Math.cos(lat1) * Math.cos(lat2) *
+                Math.sin(dLng / 2) * Math.sin(dLng / 2);
+      const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+      const distanceMeters = 6371000 * c; // Earth radius in meters
+
+      // Estimate duration: assume ~30km/h average for ferry/boat travel
+      const durationSeconds = Math.round(distanceMeters / 30000 * 3600);
+
+      // Create a straight-line polyline
+      const straightLineGeometry = encodeSimplePolyline([origin, destination]);
+
+      const fallbackResult: DirectionsRoute = {
+        legs: [{
+          distance: distanceMeters,
+          duration: durationSeconds,
+        }],
+        geometry: straightLineGeometry,
+        totalDistance: {
+          text: formatDistance(distanceMeters),
+          value: distanceMeters,
+        },
+        totalDuration: {
+          text: formatDuration(durationSeconds) + ' (est.)',
+          value: durationSeconds,
+        },
+        mode: 'ferry', // Indicate this is a ferry/boat route
+      };
+
+      return NextResponse.json({
+        success: true,
+        route: fallbackResult,
+        isFallback: true,
+        fallbackReason: 'No road route available - may require ferry or boat'
+      });
     }
 
     return NextResponse.json({

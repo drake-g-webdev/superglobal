@@ -94,7 +94,7 @@ export default function BetaPage() {
             Join the <span className="text-orange-500">Superglobal Beta</span>
           </h1>
           <p className="text-xl text-stone-300 mb-8 max-w-2xl mx-auto">
-            We&apos;re looking for travelers to help shape the future of trip planning.
+            We&apos;re looking for travelers to help shape the development of our travel planning platform.
             Book a quick video call to get early access and share your feedback.
           </p>
         </div>

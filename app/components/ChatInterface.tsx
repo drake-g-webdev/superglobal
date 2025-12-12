@@ -1209,6 +1209,32 @@ export default function ChatInterface() {
             const data = await response.json();
             const fullResponse = data.response || data.message || '';
 
+            // Log RAG debug info to browser console
+            if (data.rag_debug) {
+                console.log('\n' + '='.repeat(80));
+                console.log('[RAG DEBUG] Pinecone Vector Search Results');
+                console.log('='.repeat(80));
+                console.log('Pinecone Connected:', data.rag_debug.pinecone_connected);
+                console.log('Query Used:', data.rag_debug.query_used);
+                console.log('Chunks Retrieved:', data.rag_debug.chunks_retrieved);
+                if (data.rag_debug.error) {
+                    console.error('RAG Error:', data.rag_debug.error);
+                }
+                if (data.rag_debug.chunks && data.rag_debug.chunks.length > 0) {
+                    console.log('\n--- Retrieved Chunks from TBB Articles ---');
+                    data.rag_debug.chunks.forEach((chunk: { chunk_index: number; content_preview: string; content_length: number; metadata: Record<string, unknown> }, i: number) => {
+                        console.log(`\n[Chunk ${i + 1}]`);
+                        console.log('Content Preview:', chunk.content_preview);
+                        console.log('Full Length:', chunk.content_length, 'chars');
+                        console.log('Metadata:', chunk.metadata);
+                    });
+                } else {
+                    console.warn('No TBB article chunks retrieved - using web search only');
+                }
+                console.log('\nWeb Search Used:', data.web_search_used);
+                console.log('='.repeat(80) + '\n');
+            }
+
             // Add the response to messages
             addMessage(chatId, { role: 'assistant', content: fullResponse });
 

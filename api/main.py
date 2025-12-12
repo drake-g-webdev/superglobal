@@ -327,6 +327,20 @@ def format_docs(docs):
     return "\n\n".join(doc.page_content for doc in docs)
 
 
+def format_docs_for_logging(docs):
+    """Format docs with metadata for debugging/logging purposes."""
+    chunks = []
+    for i, doc in enumerate(docs):
+        chunk_info = {
+            "chunk_index": i,
+            "content_preview": doc.page_content[:300] + "..." if len(doc.page_content) > 300 else doc.page_content,
+            "content_length": len(doc.page_content),
+            "metadata": doc.metadata if hasattr(doc, 'metadata') else {}
+        }
+        chunks.append(chunk_info)
+    return chunks
+
+
 def build_profile_section(profile: Optional[UserProfile]) -> str:
     """Build a comprehensive profile section for the AI prompt."""
     if not profile:
@@ -681,8 +695,17 @@ async def chat(request: ChatRequest):
 
     # Get vector store context (if available)
     context = ""
+    rag_debug = {
+        "pinecone_connected": retriever is not None,
+        "query_used": None,
+        "chunks_retrieved": 0,
+        "chunks": [],
+        "error": None
+    }
+
     if retriever:
         try:
+            # Determine the query to use
             if chat_history:
                 contextualize_q_prompt = ChatPromptTemplate.from_messages([
                     ("system", "Given a chat history and the latest user question, formulate a standalone question. Do NOT answer, just reformulate if needed."),
@@ -693,15 +716,23 @@ async def chat(request: ChatRequest):
                     "input": request.message,
                     "chat_history": chat_history
                 })
+                rag_debug["query_used"] = standalone_q
                 docs = retriever.invoke(standalone_q)
             else:
+                rag_debug["query_used"] = request.message
                 docs = retriever.invoke(request.message)
+
             context = format_docs(docs)
+            rag_debug["chunks_retrieved"] = len(docs)
+            rag_debug["chunks"] = format_docs_for_logging(docs)
+            logging.info(f"[RAG] Retrieved {len(docs)} chunks for query: {rag_debug['query_used'][:100]}...")
         except Exception as e:
             logging.warning(f"Vector retrieval failed: {e}")
+            rag_debug["error"] = str(e)
             context = ""
     else:
         logging.info("No vector store available, using web search only")
+        rag_debug["error"] = "Pinecone not connected - PINECONE_API_KEY may be missing"
 
     # Get Perplexity web context (hybrid search)
     web_context = await search_perplexity(request.message, request.destination)
@@ -738,7 +769,11 @@ async def chat(request: ChatRequest):
         "web_context": web_context or "No current web data available.",
     })
 
-    return {"response": response}
+    return {
+        "response": response,
+        "rag_debug": rag_debug,
+        "web_search_used": web_context is not None and len(web_context) > 0
+    }
 
 
 @app.post("/api/chat/stream")

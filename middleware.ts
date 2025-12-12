@@ -2,30 +2,25 @@ import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { getToken } from 'next-auth/jwt';
 
-// Routes that require authentication
+// Routes that require authentication (page routes only)
 const protectedRoutes = ['/app'];
 
 // Routes that should redirect to /app if already authenticated
 const authRoutes = ['/auth/login', '/auth/signup'];
 
-// API routes that require authentication (most do)
-const protectedApiRoutes = [
-  '/api/trips',
-  '/api/chats',
-  '/api/profile',
-  '/api/chat',
-];
-
-// API routes that don't require auth
-const publicApiRoutes = [
-  '/api/auth',
-  '/api/beta',
-];
-
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
-  // Get the token (session)
+  // Skip API routes entirely - let the API handlers manage their own auth
+  // This prevents middleware from interfering with session/cookie handling
+  if (pathname.startsWith('/api/')) {
+    const response = NextResponse.next();
+    // Add security headers to API responses
+    response.headers.set('X-Content-Type-Options', 'nosniff');
+    return response;
+  }
+
+  // Get the token (session) for page routes only
   const token = await getToken({
     req: request,
     secret: process.env.NEXTAUTH_SECRET,
@@ -49,25 +44,7 @@ export async function middleware(request: NextRequest) {
     }
   }
 
-  // Protect API routes - return 401 if not authenticated
-  if (pathname.startsWith('/api/')) {
-    // Skip public API routes
-    if (publicApiRoutes.some(route => pathname.startsWith(route))) {
-      return NextResponse.next();
-    }
-
-    // Check if this is a protected API route
-    if (protectedApiRoutes.some(route => pathname.startsWith(route))) {
-      if (!isAuthenticated) {
-        return NextResponse.json(
-          { error: 'Unauthorized', message: 'Authentication required' },
-          { status: 401 }
-        );
-      }
-    }
-  }
-
-  // Add security headers to all responses
+  // Add security headers to all page responses
   const response = NextResponse.next();
 
   // Security headers

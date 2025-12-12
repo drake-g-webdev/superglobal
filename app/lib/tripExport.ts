@@ -273,6 +273,15 @@ export async function exportTripToPDF(
   const contentWidth = pageWidth - (margin * 2);
   let y = margin;
 
+  // Fixed column positions for budget table (absolute positions from left margin)
+  const COL = {
+    name: margin + 2,           // Item name starts here
+    nameWidth: 75,              // Max width for name column
+    qty: margin + 80,           // Quantity column
+    unit: margin + 95,          // Unit column
+    amount: margin + 130,       // Amount column (right side)
+  };
+
   // Helper: Add new page if needed
   const checkNewPage = (requiredSpace: number) => {
     if (y + requiredSpace > pageHeight - margin) {
@@ -288,6 +297,16 @@ export async function exportTripToPDF(
     pdf.setDrawColor(color);
     pdf.setLineWidth(0.3);
     pdf.line(margin, yPos, pageWidth - margin, yPos);
+  };
+
+  // Helper: Truncate text to fit within maxWidth
+  const truncateText = (text: string, maxWidth: number): string => {
+    if (pdf.getTextWidth(text) <= maxWidth) return text;
+    let truncated = text;
+    while (truncated.length > 0 && pdf.getTextWidth(truncated + '...') > maxWidth) {
+      truncated = truncated.slice(0, -1);
+    }
+    return truncated + '...';
   };
 
   // ===== COVER PAGE =====
@@ -408,7 +427,7 @@ export async function exportTripToPDF(
     y += 10;
 
     chat.tripContext.itineraryBreakdown.forEach((stop, index) => {
-      checkNewPage(15);
+      checkNewPage(20);
 
       // Stop number circle
       pdf.setFillColor(COLORS.orange);
@@ -418,35 +437,38 @@ export async function exportTripToPDF(
       pdf.setTextColor(COLORS.white);
       pdf.text(String(index + 1), margin + 4, y + 0.5, { align: 'center' });
 
-      // Stop name and days
+      // Stop name - truncate if too long
       pdf.setFont('helvetica', 'bold');
       pdf.setFontSize(12);
       pdf.setTextColor(COLORS.stone800);
-      pdf.text(stop.location, margin + 12, y);
+      const maxLocationWidth = contentWidth - 50; // Leave room for days badge
+      const truncatedLocation = truncateText(stop.location, maxLocationWidth);
+      pdf.text(truncatedLocation, margin + 12, y);
 
-      // Days badge
+      // Days badge - positioned after the location name
       const daysText = `${stop.days} day${stop.days !== 1 ? 's' : ''}`;
       pdf.setFont('helvetica', 'normal');
       pdf.setFontSize(9);
       pdf.setTextColor(COLORS.stone500);
-      const locationWidth = pdf.getTextWidth(stop.location);
-      pdf.text(daysText, margin + 12 + locationWidth + 5, y);
+      const actualLocationWidth = pdf.getTextWidth(truncatedLocation);
+      pdf.text(daysText, margin + 12 + actualLocationWidth + 5, y);
 
-      y += 5;
+      y += 6;
 
-      // Notes
+      // Notes - properly wrapped
       if (stop.notes) {
         pdf.setFont('helvetica', 'normal');
         pdf.setFontSize(9);
         pdf.setTextColor(COLORS.stone600);
         const noteLines = pdf.splitTextToSize(stop.notes, contentWidth - 15);
         noteLines.forEach((line: string) => {
+          checkNewPage(5);
           pdf.text(line, margin + 12, y);
           y += 4;
         });
       }
 
-      y += 3;
+      y += 4;
     });
 
     y += 8;
@@ -460,15 +482,10 @@ export async function exportTripToPDF(
     pdf.setFontSize(16);
     pdf.setTextColor(COLORS.orange);
     pdf.text('Budget Breakdown', margin, y);
-    y += 3;
+    y += 10;
 
     // Calculate total
     const total = chat.tripCosts.items.reduce((sum, item) => sum + (item.amount * item.quantity), 0);
-    pdf.setFont('helvetica', 'normal');
-    pdf.setFontSize(10);
-    pdf.setTextColor(COLORS.stone500);
-    pdf.text(`Total: $${total.toFixed(0)} ${chat.tripCosts.currency}`, pageWidth - margin, y, { align: 'right' });
-    y += 10;
 
     // Group costs by category
     const costsByCategory: Record<string, CostItem[]> = {};
@@ -479,17 +496,17 @@ export async function exportTripToPDF(
       costsByCategory[item.category].push(item);
     });
 
-    // Table header
+    // Table header row
     pdf.setFillColor(COLORS.stone200);
     pdf.rect(margin, y - 4, contentWidth, 8, 'F');
     pdf.setFont('helvetica', 'bold');
     pdf.setFontSize(9);
     pdf.setTextColor(COLORS.stone700);
-    pdf.text('Item', margin + 2, y);
-    pdf.text('Qty', margin + contentWidth * 0.55, y);
-    pdf.text('Unit', margin + contentWidth * 0.65, y);
-    pdf.text('Amount', margin + contentWidth * 0.85, y);
-    y += 6;
+    pdf.text('Item', COL.name, y);
+    pdf.text('Qty', COL.qty, y);
+    pdf.text('Unit', COL.unit, y);
+    pdf.text('Amount', COL.amount, y);
+    y += 8;
 
     Object.entries(costsByCategory).forEach(([category, items]) => {
       checkNewPage(20);
@@ -499,10 +516,17 @@ export async function exportTripToPDF(
       pdf.setFontSize(10);
       pdf.setTextColor(COLORS.orange);
       const categoryLabel = CATEGORY_LABELS[category as CostCategory] || category;
-      pdf.text(categoryLabel, margin + 2, y);
-      y += 5;
+      pdf.text(categoryLabel, COL.name, y);
+      y += 6;
 
-      // Items
+      // Category subtotal
+      const categoryTotal = items.reduce((sum, item) => sum + (item.amount * item.quantity), 0);
+      pdf.setFont('helvetica', 'normal');
+      pdf.setFontSize(8);
+      pdf.setTextColor(COLORS.stone500);
+      pdf.text(`$${categoryTotal.toFixed(0)}`, COL.amount, y - 6);
+
+      // Items in category
       items.forEach(item => {
         checkNewPage(6);
 
@@ -510,35 +534,46 @@ export async function exportTripToPDF(
         pdf.setFontSize(9);
         pdf.setTextColor(COLORS.stone700);
 
-        // Truncate name if too long
-        let name = item.name;
-        if (pdf.getTextWidth(name) > contentWidth * 0.5) {
-          while (pdf.getTextWidth(name + '...') > contentWidth * 0.5 && name.length > 0) {
-            name = name.slice(0, -1);
-          }
-          name += '...';
-        }
+        // Truncate name to fit column width
+        const truncatedName = truncateText(item.name, COL.nameWidth);
+        pdf.text(truncatedName, COL.name + 2, y);
 
-        pdf.text(name, margin + 4, y);
-        pdf.text(String(item.quantity), margin + contentWidth * 0.55, y);
-        pdf.text(item.unit || '-', margin + contentWidth * 0.65, y);
+        // Center qty in its column
+        pdf.text(String(item.quantity), COL.qty, y);
 
+        // Unit - truncate if needed
+        const unitText = item.unit || '-';
+        pdf.text(truncateText(unitText, 30), COL.unit, y);
+
+        // Amount - right side
         const itemTotal = item.amount * item.quantity;
-        pdf.text(`$${itemTotal.toFixed(0)}`, margin + contentWidth * 0.85, y);
+        pdf.text(`$${itemTotal.toFixed(0)}`, COL.amount, y);
 
         y += 5;
       });
 
-      y += 3;
+      y += 4;
     });
+
+    // Total row
+    checkNewPage(15);
+    drawLine(y, COLORS.stone400);
+    y += 6;
+
+    pdf.setFont('helvetica', 'bold');
+    pdf.setFontSize(11);
+    pdf.setTextColor(COLORS.stone800);
+    pdf.text('TOTAL', COL.name, y);
+    pdf.text(`$${total.toFixed(0)} ${chat.tripCosts.currency}`, COL.amount, y);
 
     // Daily average
     if (chat.tripContext.tripDurationDays > 0) {
+      y += 6;
       const dailyAvg = total / chat.tripContext.tripDurationDays;
-      pdf.setFont('helvetica', 'bold');
+      pdf.setFont('helvetica', 'normal');
       pdf.setFontSize(10);
-      pdf.setTextColor(COLORS.stone700);
-      pdf.text(`Daily Average: $${dailyAvg.toFixed(0)}`, margin, y + 5);
+      pdf.setTextColor(COLORS.stone600);
+      pdf.text(`Daily Average: $${dailyAvg.toFixed(0)}/day`, COL.name, y);
     }
 
     y += 15;
@@ -609,7 +644,7 @@ export async function exportTripToPDF(
           pdf.line(xOffset + 1.5, colY, xOffset + 3, colY - 2.5);
         }
 
-        // Item name
+        // Item name - truncate to fit column
         pdf.setFont('helvetica', 'normal');
         pdf.setFontSize(9);
         pdf.setTextColor(COLORS.stone700);
@@ -619,7 +654,10 @@ export async function exportTripToPDF(
           itemText += ` (x${item.quantity})`;
         }
 
-        pdf.text(itemText, xOffset + 5, colY);
+        // Truncate to fit column width (account for checkbox space)
+        const maxItemWidth = colWidth - 8;
+        const truncatedItem = truncateText(itemText, maxItemWidth);
+        pdf.text(truncatedItem, xOffset + 5, colY);
         colY += 5;
       });
 

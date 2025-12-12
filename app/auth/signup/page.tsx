@@ -160,16 +160,30 @@ export default function SignupPage() {
     ? COUNTRIES.filter(c => c.toLowerCase().includes(countryOfOrigin.toLowerCase())).slice(0, 5)
     : [];
 
-  const validateStep1 = () => {
+  const validateStep1 = async (): Promise<boolean> => {
     if (!email || !password || !confirmPassword || !masterPassword) {
       setError('All fields are required');
       return false;
     }
-    const correctMasterPassword = process.env.NEXT_PUBLIC_MASTER_PASSWORD || 'brokepacker2025';
-    if (masterPassword !== correctMasterPassword) {
-      setError('Invalid master password');
+
+    // Validate master password server-side
+    try {
+      const validateRes = await fetch('/api/auth/validate-master', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ masterPassword }),
+      });
+      const validateData = await validateRes.json();
+
+      if (!validateData.valid) {
+        setError('Invalid master password');
+        return false;
+      }
+    } catch {
+      setError('Failed to validate master password');
       return false;
     }
+
     if (!/\S+@\S+\.\S+/.test(email)) {
       setError('Please enter a valid email address');
       return false;
@@ -197,9 +211,14 @@ export default function SignupPage() {
     return true;
   };
 
-  const handleNextStep = () => {
+  const handleNextStep = async () => {
     setError('');
-    if (step === 1 && !validateStep1()) return;
+    if (step === 1) {
+      setIsLoading(true);
+      const valid = await validateStep1();
+      setIsLoading(false);
+      if (!valid) return;
+    }
     if (step === 3 && !validateStep3()) return;
     setStep(step + 1);
   };

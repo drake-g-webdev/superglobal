@@ -26,14 +26,27 @@ export default function LoginPage() {
       return;
     }
 
-    // Validate master password
-    const correctMasterPassword = process.env.NEXT_PUBLIC_MASTER_PASSWORD || 'brokepacker2025';
-    if (masterPassword !== correctMasterPassword) {
-      setError('Invalid master password');
+    setIsLoading(true);
+
+    // Validate master password server-side
+    try {
+      const validateRes = await fetch('/api/auth/validate-master', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ masterPassword }),
+      });
+      const validateData = await validateRes.json();
+
+      if (!validateData.valid) {
+        setError('Invalid master password');
+        setIsLoading(false);
+        return;
+      }
+    } catch {
+      setError('Failed to validate master password');
+      setIsLoading(false);
       return;
     }
-
-    setIsLoading(true);
 
     try {
       const result = await login(email, password);

@@ -188,8 +188,21 @@ export default function SignupPage() {
       setError('Please enter a valid email address');
       return false;
     }
-    if (password.length < 6) {
-      setError('Password must be at least 6 characters');
+    // Strong password requirements: min 8 chars, uppercase, lowercase, number
+    if (password.length < 8) {
+      setError('Password must be at least 8 characters');
+      return false;
+    }
+    if (!/[A-Z]/.test(password)) {
+      setError('Password must contain at least one uppercase letter');
+      return false;
+    }
+    if (!/[a-z]/.test(password)) {
+      setError('Password must contain at least one lowercase letter');
+      return false;
+    }
+    if (!/[0-9]/.test(password)) {
+      setError('Password must contain at least one number');
       return false;
     }
     if (password !== confirmPassword) {
@@ -427,7 +440,7 @@ export default function SignupPage() {
                         type="password"
                         value={password}
                         onChange={(e) => setPassword(e.target.value)}
-                        placeholder="Min. 6 characters"
+                        placeholder="Min. 8 chars, uppercase, lowercase, number"
                         className="w-full bg-stone-700 border border-stone-600 rounded-lg pl-10 pr-4 py-3 focus:outline-none focus:border-orange-500"
                         required
                       />

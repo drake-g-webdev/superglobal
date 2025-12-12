@@ -68,8 +68,7 @@ export async function GET(request: NextRequest, context: RouteContext) {
     });
   } catch (error) {
     console.error('Error fetching chat:', error);
-    // Return null instead of 500 so client can fall back to localStorage
-    return NextResponse.json(null, { status: 200 });
+    return NextResponse.json({ error: 'Failed to fetch chat' }, { status: 500 });
   }
 }
 

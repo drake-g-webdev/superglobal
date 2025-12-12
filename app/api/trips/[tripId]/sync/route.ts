@@ -305,8 +305,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
     return NextResponse.json({ success: true });
   } catch (error) {
     console.error('Error syncing trip:', error);
-    // Return success: false but 200 status so client knows to keep localStorage data
-    return NextResponse.json({ success: false, error: 'Failed to sync trip' }, { status: 200 });
+    return NextResponse.json({ success: false, error: 'Failed to sync trip' }, { status: 500 });
   }
 }
 
@@ -359,7 +358,6 @@ export async function GET(request: NextRequest, context: RouteContext) {
     });
   } catch (error) {
     console.error('Error fetching trip:', error);
-    // Return null instead of 500 so client can fall back to localStorage
-    return NextResponse.json(null, { status: 200 });
+    return NextResponse.json({ error: 'Failed to fetch trip' }, { status: 500 });
   }
 }

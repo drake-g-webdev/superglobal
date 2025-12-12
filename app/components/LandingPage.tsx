@@ -1,18 +1,29 @@
 "use client";
 
 import Link from 'next/link';
+import Image from 'next/image';
 import { Globe, MapPin, DollarSign, MessageSquare, Backpack, Sparkles } from 'lucide-react';
 
 export default function LandingPage() {
   return (
     <div className="min-h-screen bg-stone-900 text-stone-100">
-      {/* Hero Section */}
-      <div className="relative overflow-hidden">
-        {/* Background gradient */}
-        <div className="absolute inset-0 bg-gradient-to-br from-orange-600/20 via-stone-900 to-stone-900" />
+      {/* Hero Section with Background Image */}
+      <div className="relative min-h-[90vh] flex flex-col">
+        {/* Background Image */}
+        <div className="absolute inset-0">
+          <Image
+            src="/images/blue-lake.jpg"
+            alt="Mountain lake adventure"
+            fill
+            className="object-cover"
+            priority
+          />
+          {/* Gradient overlay for readability */}
+          <div className="absolute inset-0 bg-gradient-to-b from-stone-900/70 via-stone-900/50 to-stone-900" />
+        </div>
 
         {/* Navigation */}
-        <nav className="relative z-10 flex items-center justify-center md:justify-between px-6 py-4 max-w-6xl mx-auto">
+        <nav className="relative z-10 flex items-center justify-center md:justify-between px-6 py-4 max-w-6xl mx-auto w-full">
           <div className="flex items-center gap-2 font-mono">
             <Globe size={24} className="text-orange-500" />
             <span className="font-semibold text-lg">superglobal.travel</span>
@@ -21,7 +32,7 @@ export default function LandingPage() {
           <div className="hidden md:flex items-center gap-4">
             <Link
               href="/auth/login"
-              className="text-stone-300 hover:text-white transition-colors"
+              className="text-stone-200 hover:text-white transition-colors"
             >
               Log in
             </Link>
@@ -36,28 +47,91 @@ export default function LandingPage() {
         </nav>
 
         {/* Hero Content */}
-        <div className="relative z-10 max-w-4xl mx-auto px-6 py-20 text-center">
-          <h1 className="text-4xl md:text-6xl font-bold mb-6 leading-tight">
-            Prepare for your next
-            <span className="text-orange-500"> great adventure</span>
-          </h1>
-          <p className="text-xl text-stone-300 mb-8 max-w-2xl mx-auto">
-            Collaborate with a smart travel assistant that knows your travel style, budget, and preferences to build the perfect trip plan.
+        <div className="relative z-10 flex-1 flex items-center justify-center">
+          <div className="max-w-4xl mx-auto px-6 py-20 text-center">
+            <h1 className="text-4xl md:text-6xl font-bold mb-6 leading-tight drop-shadow-lg">
+              Prepare for your next
+              <span className="text-orange-400"> great adventure</span>
+            </h1>
+            <p className="text-xl text-stone-100 mb-8 max-w-2xl mx-auto drop-shadow-md">
+              Collaborate with a smart travel assistant that knows your travel style, budget, and preferences to build the perfect trip plan.
+            </p>
+            <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
+              <Link
+                href="/beta"
+                className="bg-orange-600 hover:bg-orange-700 text-white px-8 py-4 rounded-xl font-semibold text-lg transition-colors flex items-center gap-2 shadow-lg"
+              >
+                <Sparkles size={20} />
+                Join Beta
+              </Link>
+              <Link
+                href="/auth/login"
+                className="text-white hover:text-orange-200 px-8 py-4 rounded-xl font-medium text-lg transition-colors border border-white/30 hover:border-white/50 backdrop-blur-sm"
+              >
+                I already have an account
+              </Link>
+            </div>
+          </div>
+        </div>
+
+        {/* Scroll indicator */}
+        <div className="relative z-10 pb-8 flex justify-center">
+          <div className="animate-bounce">
+            <svg className="w-6 h-6 text-white/60" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 14l-7 7m0 0l-7-7m7 7V3" />
+            </svg>
+          </div>
+        </div>
+      </div>
+
+      {/* Photo Strip Section */}
+      <div className="relative py-16 overflow-hidden">
+        <div className="max-w-6xl mx-auto px-6">
+          <p className="text-center text-stone-400 text-sm uppercase tracking-widest mb-8">
+            Built by travelers, for travelers
           </p>
-          <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
-            <Link
-              href="/beta"
-              className="bg-orange-600 hover:bg-orange-700 text-white px-8 py-4 rounded-xl font-semibold text-lg transition-colors flex items-center gap-2"
-            >
-              <Sparkles size={20} />
-              Join Beta
-            </Link>
-            <Link
-              href="/auth/login"
-              className="text-stone-300 hover:text-white px-8 py-4 rounded-xl font-medium text-lg transition-colors border border-stone-700 hover:border-stone-600"
-            >
-              I already have an account
-            </Link>
+
+          {/* Polaroid-style photo gallery */}
+          <div className="flex flex-col md:flex-row justify-center items-center gap-6 md:gap-8">
+            {/* Photo 1 - Market */}
+            <div className="transform -rotate-2 hover:rotate-0 transition-transform duration-300">
+              <div className="relative bg-stone-100 p-3 pb-14 shadow-xl rounded-sm">
+                <div className="relative w-64 h-44 overflow-hidden">
+                  <Image
+                    src="/images/market-huaraz.jpg"
+                    alt="Local market in Huaraz"
+                    fill
+                    className="object-cover"
+                  />
+                </div>
+                <p
+                  className="absolute bottom-4 left-0 right-0 text-center text-stone-600 text-sm"
+                  style={{ fontFamily: 'Georgia, serif', fontStyle: 'italic' }}
+                >
+                  Huaraz, Peru
+                </p>
+              </div>
+            </div>
+
+            {/* Photo 2 - Surf */}
+            <div className="transform rotate-1 hover:rotate-0 transition-transform duration-300 md:-mt-4">
+              <div className="relative bg-stone-100 p-3 pb-14 shadow-xl rounded-sm">
+                <div className="relative w-64 h-44 overflow-hidden">
+                  <Image
+                    src="/images/surf.jpg"
+                    alt="Surfing with friends"
+                    fill
+                    className="object-cover"
+                  />
+                </div>
+                <p
+                  className="absolute bottom-4 left-0 right-0 text-center text-stone-600 text-sm"
+                  style={{ fontFamily: 'Georgia, serif', fontStyle: 'italic' }}
+                >
+                  Pacific Coast
+                </p>
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -71,7 +145,7 @@ export default function LandingPage() {
 
         <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-8">
           {/* Feature 1 */}
-          <div className="bg-stone-800/50 border border-stone-700 rounded-xl p-6">
+          <div className="bg-stone-800/50 border border-stone-700 rounded-xl p-6 hover:border-stone-600 transition-colors">
             <div className="w-12 h-12 bg-orange-600/20 rounded-lg flex items-center justify-center mb-4">
               <MessageSquare className="text-orange-500" size={24} />
             </div>
@@ -82,7 +156,7 @@ export default function LandingPage() {
           </div>
 
           {/* Feature 2 */}
-          <div className="bg-stone-800/50 border border-stone-700 rounded-xl p-6">
+          <div className="bg-stone-800/50 border border-stone-700 rounded-xl p-6 hover:border-stone-600 transition-colors">
             <div className="w-12 h-12 bg-orange-600/20 rounded-lg flex items-center justify-center mb-4">
               <DollarSign className="text-orange-500" size={24} />
             </div>
@@ -93,7 +167,7 @@ export default function LandingPage() {
           </div>
 
           {/* Feature 3 */}
-          <div className="bg-stone-800/50 border border-stone-700 rounded-xl p-6">
+          <div className="bg-stone-800/50 border border-stone-700 rounded-xl p-6 hover:border-stone-600 transition-colors">
             <div className="w-12 h-12 bg-orange-600/20 rounded-lg flex items-center justify-center mb-4">
               <MapPin className="text-orange-500" size={24} />
             </div>
@@ -104,7 +178,7 @@ export default function LandingPage() {
           </div>
 
           {/* Feature 4 */}
-          <div className="bg-stone-800/50 border border-stone-700 rounded-xl p-6">
+          <div className="bg-stone-800/50 border border-stone-700 rounded-xl p-6 hover:border-stone-600 transition-colors">
             <div className="w-12 h-12 bg-orange-600/20 rounded-lg flex items-center justify-center mb-4">
               <Backpack className="text-orange-500" size={24} />
             </div>
@@ -115,7 +189,7 @@ export default function LandingPage() {
           </div>
 
           {/* Feature 5 */}
-          <div className="bg-stone-800/50 border border-stone-700 rounded-xl p-6">
+          <div className="bg-stone-800/50 border border-stone-700 rounded-xl p-6 hover:border-stone-600 transition-colors">
             <div className="w-12 h-12 bg-orange-600/20 rounded-lg flex items-center justify-center mb-4">
               <Globe className="text-orange-500" size={24} />
             </div>
@@ -126,7 +200,7 @@ export default function LandingPage() {
           </div>
 
           {/* Feature 6 */}
-          <div className="bg-stone-800/50 border border-stone-700 rounded-xl p-6">
+          <div className="bg-stone-800/50 border border-stone-700 rounded-xl p-6 hover:border-stone-600 transition-colors">
             <div className="w-12 h-12 bg-orange-600/20 rounded-lg flex items-center justify-center mb-4">
               <svg className="text-orange-500 w-6 h-6" fill="currentColor" viewBox="0 0 24 24">
                 <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/>
@@ -141,8 +215,12 @@ export default function LandingPage() {
       </div>
 
       {/* Beta CTA Section */}
-      <div className="bg-gradient-to-r from-orange-600/20 to-orange-500/10 border-y border-orange-500/20">
-        <div className="max-w-4xl mx-auto px-6 py-16 text-center">
+      <div className="relative overflow-hidden">
+        {/* Subtle background texture */}
+        <div className="absolute inset-0 bg-gradient-to-r from-orange-600/10 via-orange-500/5 to-orange-600/10" />
+        <div className="absolute inset-0 border-y border-orange-500/20" />
+
+        <div className="relative max-w-4xl mx-auto px-6 py-16 text-center">
           <div className="inline-flex items-center gap-2 bg-stone-800/50 border border-orange-500/30 rounded-full px-4 py-2 mb-6">
             <Sparkles size={16} className="text-orange-400" />
             <span className="text-orange-300 text-sm font-medium">Now accepting beta testers</span>
@@ -153,7 +231,7 @@ export default function LandingPage() {
           </p>
           <Link
             href="/beta"
-            className="inline-flex items-center gap-2 bg-orange-600 hover:bg-orange-700 text-white px-8 py-4 rounded-xl font-semibold text-lg transition-colors"
+            className="inline-flex items-center gap-2 bg-orange-600 hover:bg-orange-700 text-white px-8 py-4 rounded-xl font-semibold text-lg transition-colors shadow-lg"
           >
             <Sparkles size={20} />
             Schedule a Call

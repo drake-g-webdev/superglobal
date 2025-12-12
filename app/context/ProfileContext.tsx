@@ -9,11 +9,10 @@ import { useSession } from 'next-auth/react';
 
 export type RiskTolerance = 'low' | 'medium' | 'high';
 export type ComfortThreshold = 'hotels' | 'hostels' | 'tents' | 'van' | 'couchsurfing';
-export type HygieneThreshold = 'daily' | 'every_3_days' | 'broke_backpacker_mode';
 export type FoodPreference = 'street_food' | 'restaurants' | 'cooking' | 'mixed';
 export type TravelPace = 'slow' | 'moderate' | 'fast';
-export type PackWeight = 'minimalist' | 'moderate' | 'maximalist';
-export type IncomeType = 'remote_worker' | 'seasonal_worker' | 'savings_only' | 'passive_income';
+// Pack weight descriptions in LBS for US audience
+export type PackWeight = 'minimalist' | 'moderate' | 'maximalist'; // <20lbs, 20-35lbs, 35+lbs
 export type ElectronicsTolerance = 'low' | 'medium' | 'high';
 
 export interface ActivityWeighting {
@@ -28,43 +27,38 @@ export interface UserProfile {
   // Basic Info
   name: string;
   countryOfOrigin: string;
-  passportCountry: string;
 
-  // Original fields
+  // Travel style and budget
   travelStyle: 'solo' | 'couple' | 'group' | 'family';
   budgetPreference: 'broke-backpacker' | 'flashpacker' | 'digital-nomad';
+
+  // Travel History & Dreams (user can fill out later)
   countriesVisited: string[];
   bucketList: string[];
   interests: string[];
   restrictions: string[];
 
-  // NEW: Travel Style Indicators (Broke Backpacker-Specific)
+  // Travel Style Indicators
   riskTolerance: RiskTolerance;
   comfortThreshold: ComfortThreshold;
-  hygieneThreshold: HygieneThreshold;
   activityWeighting: ActivityWeighting;
   foodPreference: FoodPreference;
   travelPace: TravelPace;
   electronicsTolerance: ElectronicsTolerance;
 
-  // NEW: Backpack Weight Preferences
+  // Backpack Weight Preferences (in LBS: minimalist <20, moderate 20-35, maximalist 35+)
   packWeight: PackWeight;
 
-  // NEW: Income Type (For Budget Modeling)
-  incomeType: IncomeType;
-  monthlyBudget: number; // USD
-
-  // NEW: Safety Profile (Long-term preferences)
+  // Safety Profile
   walkAtNight: boolean;
   experiencedMotos: boolean;
   openToCouchsurfing: boolean;
   femaleTravelerConcerns: boolean;
 
-  // NEW: Content Creation Goals
+  // Content Creation Goals
   instagramFriendly: boolean;
   hiddenSpots: boolean;
   videoFocus: boolean;
-  sunriseSunsetOptimization: boolean;
 }
 
 export const defaultActivityWeighting: ActivityWeighting = {
@@ -79,11 +73,12 @@ export const defaultProfile: UserProfile = {
   // Basic Info
   name: '',
   countryOfOrigin: '',
-  passportCountry: '',
 
-  // Original fields
+  // Travel style and budget
   travelStyle: 'solo',
   budgetPreference: 'broke-backpacker',
+
+  // Travel History & Dreams (empty by default, user fills later)
   countriesVisited: [],
   bucketList: [],
   interests: [],
@@ -92,30 +87,24 @@ export const defaultProfile: UserProfile = {
   // Travel Style Indicators
   riskTolerance: 'medium',
   comfortThreshold: 'hostels',
-  hygieneThreshold: 'every_3_days',
   activityWeighting: defaultActivityWeighting,
   foodPreference: 'street_food',
   travelPace: 'moderate',
   electronicsTolerance: 'medium',
 
-  // Backpack Weight
+  // Backpack Weight (LBS)
   packWeight: 'moderate',
 
-  // Income Type
-  incomeType: 'savings_only',
-  monthlyBudget: 1500,
-
-  // Safety Profile
-  walkAtNight: true,
+  // Safety Profile - all false by default (no auto-selection)
+  walkAtNight: false,
   experiencedMotos: false,
   openToCouchsurfing: false,
   femaleTravelerConcerns: false,
 
-  // Content Creation
+  // Content Creation - all false by default (no auto-selection)
   instagramFriendly: false,
-  hiddenSpots: true,
+  hiddenSpots: false,
   videoFocus: false,
-  sunriseSunsetOptimization: false,
 };
 
 interface ProfileContextType {
@@ -142,11 +131,10 @@ function dbToLocalProfile(dbProfile: Record<string, unknown>): Partial<UserProfi
     // Name is included from User model in the API response
     name: (dbProfile.name as string) || '',
     countryOfOrigin: (dbProfile.countryOfOrigin as string) || '',
-    passportCountry: (dbProfile.passportCountry as string) || '',
     travelStyle: (dbProfile.travelStyle as UserProfile['travelStyle']) || 'solo',
+    budgetPreference: (dbProfile.budgetStyle as UserProfile['budgetPreference']) || 'broke-backpacker',
     riskTolerance: (dbProfile.riskTolerance as RiskTolerance) || 'medium',
     comfortThreshold: ((dbProfile.comfortThreshold as string[])?.[0] as ComfortThreshold) || 'hostels',
-    hygieneThreshold: (dbProfile.hygieneThreshold as HygieneThreshold) || 'every_3_days',
     travelPace: (dbProfile.travelPace as TravelPace) || 'moderate',
     activityWeighting: {
       party: (dbProfile.partyWeight as number) ?? 20,
@@ -158,17 +146,16 @@ function dbToLocalProfile(dbProfile: Record<string, unknown>): Partial<UserProfi
     foodPreference: (dbProfile.foodPreference as FoodPreference) || 'street_food',
     packWeight: (dbProfile.packWeight as PackWeight) || 'moderate',
     electronicsTolerance: (dbProfile.electronicsTolerance as ElectronicsTolerance) || 'medium',
-    budgetPreference: (dbProfile.budgetStyle as UserProfile['budgetPreference']) || 'broke-backpacker',
-    incomeType: (dbProfile.incomeType as IncomeType) || 'savings_only',
-    monthlyBudget: (dbProfile.monthlyBudget as number) ?? 1500,
-    walkAtNight: (dbProfile.nightWalking as boolean) ?? true,
+    // Safety Profile - default to false (no auto-selection)
+    walkAtNight: (dbProfile.nightWalking as boolean) ?? false,
     experiencedMotos: (dbProfile.motorbikeOk as boolean) ?? false,
     openToCouchsurfing: (dbProfile.couchsurfingOk as boolean) ?? false,
     femaleTravelerConcerns: (dbProfile.femaleSafety as boolean) ?? false,
+    // Content Creation - default to false (no auto-selection)
     instagramFriendly: (dbProfile.instagramSpots as boolean) ?? false,
-    hiddenSpots: (dbProfile.hiddenGems as boolean) ?? true,
+    hiddenSpots: (dbProfile.hiddenGems as boolean) ?? false,
     videoFocus: (dbProfile.videoLocations as boolean) ?? false,
-    sunriseSunsetOptimization: (dbProfile.sunriseSunsetOptimization as boolean) ?? false,
+    // Travel History & Dreams
     countriesVisited: (dbProfile.countriesVisited as string[]) || [],
     bucketList: (dbProfile.bucketList as string[]) || [],
     interests: (dbProfile.interests as string[]) || [],
@@ -180,11 +167,10 @@ function dbToLocalProfile(dbProfile: Record<string, unknown>): Partial<UserProfi
 function localToDbProfile(profile: UserProfile): Record<string, unknown> {
   return {
     countryOfOrigin: profile.countryOfOrigin || null,
-    passportCountry: profile.passportCountry || null,
     travelStyle: profile.travelStyle || null,
+    budgetStyle: profile.budgetPreference || null,
     riskTolerance: profile.riskTolerance || null,
     comfortThreshold: profile.comfortThreshold ? [profile.comfortThreshold] : [],
-    hygieneThreshold: profile.hygieneThreshold || null,
     travelPace: profile.travelPace || null,
     partyWeight: profile.activityWeighting?.party ?? 50,
     natureWeight: profile.activityWeighting?.nature ?? 50,
@@ -194,17 +180,13 @@ function localToDbProfile(profile: UserProfile): Record<string, unknown> {
     foodPreference: profile.foodPreference || null,
     packWeight: profile.packWeight || null,
     electronicsTolerance: profile.electronicsTolerance || null,
-    budgetStyle: profile.budgetPreference || null,
-    incomeType: profile.incomeType || null,
-    monthlyBudget: profile.monthlyBudget ?? null,
     nightWalking: profile.walkAtNight ?? false,
     motorbikeOk: profile.experiencedMotos ?? false,
     couchsurfingOk: profile.openToCouchsurfing ?? false,
     femaleSafety: profile.femaleTravelerConcerns ?? false,
     instagramSpots: profile.instagramFriendly ?? false,
-    hiddenGems: profile.hiddenSpots ?? true,
+    hiddenGems: profile.hiddenSpots ?? false,
     videoLocations: profile.videoFocus ?? false,
-    sunriseSunsetOptimization: profile.sunriseSunsetOptimization ?? false,
     countriesVisited: profile.countriesVisited || [],
     bucketList: profile.bucketList || [],
     interests: profile.interests || [],

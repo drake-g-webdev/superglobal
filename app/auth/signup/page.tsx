@@ -129,9 +129,7 @@ export default function SignupPage() {
   // Step 3: Basic Info
   const [name, setName] = useState('');
   const [countryOfOrigin, setCountryOfOrigin] = useState('');
-  const [passportCountry, setPassportCountry] = useState('');
   const [showOriginSuggestions, setShowOriginSuggestions] = useState(false);
-  const [showPassportSuggestions, setShowPassportSuggestions] = useState(false);
 
   // Step 4: Travel Preferences
   const [riskTolerance, setRiskTolerance] = useState<'low' | 'medium' | 'high'>('medium');
@@ -149,21 +147,17 @@ export default function SignupPage() {
   // Step 6: Food & Gear also includes budget style
   const [budgetPreference, setBudgetPreference] = useState<UserProfile['budgetPreference']>('broke-backpacker');
 
-  // Step 7: Safety & Content Creation
-  const [walkAtNight, setWalkAtNight] = useState(true);
+  // Step 7: Safety & Content Creation - all false by default (no auto-selection)
+  const [walkAtNight, setWalkAtNight] = useState(false);
   const [experiencedMotos, setExperiencedMotos] = useState(false);
   const [openToCouchsurfing, setOpenToCouchsurfing] = useState(false);
   const [femaleTravelerConcerns, setFemaleTravelerConcerns] = useState(false);
   const [instagramFriendly, setInstagramFriendly] = useState(false);
-  const [hiddenSpots, setHiddenSpots] = useState(true);
+  const [hiddenSpots, setHiddenSpots] = useState(false);
   const [videoFocus, setVideoFocus] = useState(false);
 
   const filteredOriginSuggestions = countryOfOrigin
     ? COUNTRIES.filter(c => c.toLowerCase().includes(countryOfOrigin.toLowerCase())).slice(0, 5)
-    : [];
-
-  const filteredPassportSuggestions = passportCountry
-    ? COUNTRIES.filter(c => c.toLowerCase().includes(passportCountry.toLowerCase())).slice(0, 5)
     : [];
 
   const validateStep1 = () => {
@@ -198,10 +192,6 @@ export default function SignupPage() {
     }
     if (!countryOfOrigin.trim()) {
       setError('Country of origin is required');
-      return false;
-    }
-    if (!passportCountry.trim()) {
-      setError('Passport country is required');
       return false;
     }
     return true;
@@ -239,7 +229,6 @@ export default function SignupPage() {
       const fullProfileData: Partial<UserProfile> = {
         name,
         countryOfOrigin,
-        passportCountry,
         riskTolerance,
         comfortThreshold,
         travelPace,
@@ -268,7 +257,6 @@ export default function SignupPage() {
       const dbProfileData = {
         name,
         countryOfOrigin,
-        passportCountry,
         riskTolerance,
         comfortThreshold: [comfortThreshold],
         travelPace,
@@ -569,33 +557,6 @@ export default function SignupPage() {
                     )}
                   </div>
 
-                  <div className="relative">
-                    <label className="block text-xs text-stone-400 uppercase font-bold mb-1">{tProfile('passportCountry')} *</label>
-                    <div className="relative">
-                      <MapPin size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-stone-500" />
-                      <input
-                        type="text"
-                        value={passportCountry}
-                        onChange={(e) => { setPassportCountry(e.target.value); setShowPassportSuggestions(true); }}
-                        onFocus={() => setShowPassportSuggestions(true)}
-                        onBlur={() => setTimeout(() => setShowPassportSuggestions(false), 200)}
-                        placeholder={tProfile('passportPlaceholder')}
-                        className="w-full bg-stone-700 border border-stone-600 rounded-lg pl-10 pr-4 py-3 focus:outline-none focus:border-orange-500"
-                        required
-                      />
-                    </div>
-                    {showPassportSuggestions && filteredPassportSuggestions.length > 0 && (
-                      <div className="absolute z-10 w-full mt-1 bg-stone-700 border border-stone-600 rounded-lg shadow-lg max-h-40 overflow-y-auto">
-                        {filteredPassportSuggestions.map(country => (
-                          <button key={country} type="button" onMouseDown={(e) => e.preventDefault()}
-                            onClick={() => { setPassportCountry(country); setShowPassportSuggestions(false); }}
-                            className="w-full text-left px-4 py-2 text-sm hover:bg-stone-600">
-                            {country}
-                          </button>
-                        ))}
-                      </div>
-                    )}
-                  </div>
                 </div>
               </>
             )}

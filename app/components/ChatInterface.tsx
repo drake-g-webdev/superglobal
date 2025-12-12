@@ -159,11 +159,9 @@ export default function ChatInterface() {
     // Extract locations from a message using AI
     const extractLocationsFromMessage = useCallback(async (messageContent: string, messageIndex: number, chatId: string, destination: string) => {
         const key = `${chatId}-${messageIndex}`;
-        console.log('[Location Extraction] Starting extraction for key:', key);
 
         // Check if already in flight or already extracted
         if (inFlightRef.current.has(key)) {
-            console.log('[Location Extraction] Already in-flight, skipping:', key);
             return;
         }
 
@@ -172,7 +170,6 @@ export default function ChatInterface() {
         setExtractingLocations(prev => new Set([...prev, key]));
 
         try {
-            console.log('[Location Extraction] Calling API for:', destination);
             const response = await fetch(`${API_URL}/api/extract-locations`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -184,7 +181,6 @@ export default function ChatInterface() {
 
             if (response.ok) {
                 const data = await response.json();
-                console.log('[Location Extraction] API Response:', data);
                 const typedLocations: ExtractedLocation[] = (data.locations || []).map((loc: { name: string; type: string; description: string; area: string }) => ({
                     name: loc.name,
                     type: (loc.type as MapPinType) || 'other',
@@ -192,7 +188,6 @@ export default function ChatInterface() {
                     area: loc.area || '',
                 }));
 
-                console.log('[Location Extraction] Extracted locations:', typedLocations.length, 'locations for message', messageIndex);
                 // Persist to context (survives refresh via localStorage)
                 setExtractedLocations(chatId, messageIndex, typedLocations);
             } else {
@@ -214,11 +209,9 @@ export default function ChatInterface() {
     // Extract costs from a message using AI
     const extractCostsFromMessage = useCallback(async (messageContent: string, messageIndex: number, chatId: string, destination: string, tripDays: number = 0) => {
         const key = `costs-${chatId}-${messageIndex}`;
-        console.log('[Cost Extraction] Starting extraction for key:', key);
 
         // Check if already in flight or already extracted
         if (costInFlightRef.current.has(key)) {
-            console.log('[Cost Extraction] Already in-flight, skipping:', key);
             return;
         }
 
@@ -227,7 +220,6 @@ export default function ChatInterface() {
         setExtractingCosts(prev => new Set([...prev, key]));
 
         try {
-            console.log('[Cost Extraction] Calling API for:', destination, 'trip_days:', tripDays);
             const response = await fetch(`${API_URL}/api/extract-costs`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -241,7 +233,6 @@ export default function ChatInterface() {
 
             if (response.ok) {
                 const data = await response.json();
-                console.log('[Cost Extraction] API Response:', data);
                 const typedCosts: ExtractedCost[] = (data.costs || []).map((cost: { name: string; category: string; amount: number; quantity: number; unit: string; notes: string; text_to_match?: string; is_range?: boolean }) => ({
                     name: cost.name,
                     category: (cost.category as CostCategory) || 'misc',
@@ -253,7 +244,6 @@ export default function ChatInterface() {
                     is_range: cost.is_range || false,
                 }));
 
-                console.log('[Cost Extraction] Extracted costs:', typedCosts.length, 'costs for message', messageIndex);
                 // Persist to context (survives refresh via localStorage)
                 setExtractedCosts(chatId, messageIndex, typedCosts);
             } else {
@@ -643,15 +633,8 @@ export default function ChatInterface() {
     }, [activeChat]);
 
     const addLocationToMap = useCallback(async (location: ExtractedLocation, messageIndex: number) => {
-        console.log('[Add to Map] Clicked for:', location.name, 'type:', location.type);
-        if (!activeChat) {
-            console.log('[Add to Map] No active chat');
-            return;
-        }
-        if (addedLocations.has(location.name.toLowerCase())) {
-            console.log('[Add to Map] Already added:', location.name);
-            return;
-        }
+        if (!activeChat) return;
+        if (addedLocations.has(location.name.toLowerCase())) return;
 
         setAddingLocation(location.name);
         try {
@@ -665,7 +648,6 @@ export default function ChatInterface() {
             let placeDetails: PlaceDetails | undefined;
 
             // Try Google Places API first for ALL location types
-            console.log('[Add to Map] Using Places API for:', location.name);
             const searchQuery = location.area
                 ? `${location.name}, ${location.area}, ${activeChat.destination}`
                 : `${location.name}, ${activeChat.destination}`;
@@ -679,12 +661,10 @@ export default function ChatInterface() {
 
                 if (placesResponse.ok) {
                     const placesData = await placesResponse.json();
-                    console.log('[Add to Map] Places API result:', placesData.success, placesData.place?.name, 'coords:', placesData.place?.coordinates);
                     if (placesData.success && placesData.place) {
                         // Use coordinates from Places API - these are accurate for the location
                         if (placesData.place.coordinates) {
                             coords = placesData.place.coordinates as [number, number];
-                            console.log('[Add to Map] Got coords from Places API:', coords);
                         }
                         placeDetails = {
                             placeId: placesData.place.placeId,
@@ -705,7 +685,6 @@ export default function ChatInterface() {
 
             // Fall back to geocode API only if Places didn't return coords
             if (!coords && location.name?.trim()) {
-                console.log('[Add to Map] Falling back to Geocode API for:', location.name, 'context:', geocodeContext);
                 const geocodeResponse = await fetch(`${API_URL}/api/geocode`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -719,13 +698,11 @@ export default function ChatInterface() {
                     const geocodeData = await geocodeResponse.json();
                     if (geocodeData.success && geocodeData.coordinates) {
                         coords = geocodeData.coordinates as [number, number];
-                        console.log('[Add to Map] Got coords from Geocode API:', coords);
                     }
                 }
             }
 
             if (coords) {
-                console.log('[Add to Map] Adding pin:', location.name, 'at', coords);
                 const parentStopId = findNearestItineraryStop(coords);
 
                 addMapPin(activeChat.id, {
@@ -739,7 +716,6 @@ export default function ChatInterface() {
                 });
                 updateMapView(activeChat.id, coords, 14);
                 setAddedLocations(prev => new Set([...prev, location.name.toLowerCase()]));
-                console.log('[Add to Map] Pin added successfully');
             } else {
                 console.warn(`[Add to Map] Could not find coordinates for ${location.name}`);
             }
@@ -795,12 +771,6 @@ export default function ChatInterface() {
         const originalCosts = messageCosts[messageIndex] || [];
         const costs = [...originalCosts];
 
-        if (locations.length > 0) {
-            console.log('[Render] ChatId:', activeChat?.id, 'Message index:', messageIndex, 'Locations found:', locations.length, 'Locations:', locations.map(l => l.name));
-        }
-        if (costs.length > 0) {
-            console.log('[Render] ChatId:', activeChat?.id, 'Message index:', messageIndex, 'Costs found:', costs.length, 'Costs:', costs.map(c => `${c.name}: $${c.amount}`));
-        }
         const extractKey = activeChat ? `${activeChat.id}-${messageIndex}` : '';
         const isExtracting = extractingLocations.has(extractKey);
         const costExtractKey = activeChat ? `costs-${activeChat.id}-${messageIndex}` : '';

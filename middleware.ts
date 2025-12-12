@@ -1,50 +1,11 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
-import { getToken } from 'next-auth/jwt';
 
-// Routes that require authentication (page routes only)
-const protectedRoutes = ['/app'];
-
-// Routes that should redirect to /app if already authenticated
-const authRoutes = ['/auth/login', '/auth/signup'];
+// Simplified middleware - only adds security headers
+// Auth protection is handled client-side by useAuth hook and server-side by getServerSession in API routes
+// This avoids cookie domain issues between www.superglobal.travel and superglobal.travel
 
 export async function middleware(request: NextRequest) {
-  const { pathname } = request.nextUrl;
-
-  // Skip API routes entirely - let the API handlers manage their own auth
-  // This prevents middleware from interfering with session/cookie handling
-  if (pathname.startsWith('/api/')) {
-    const response = NextResponse.next();
-    // Add security headers to API responses
-    response.headers.set('X-Content-Type-Options', 'nosniff');
-    return response;
-  }
-
-  // Get the token (session) for page routes only
-  const token = await getToken({
-    req: request,
-    secret: process.env.NEXTAUTH_SECRET,
-  });
-
-  const isAuthenticated = !!token;
-
-  // Protect /app routes - redirect to login if not authenticated
-  if (protectedRoutes.some(route => pathname.startsWith(route))) {
-    if (!isAuthenticated) {
-      const loginUrl = new URL('/auth/login', request.url);
-      loginUrl.searchParams.set('callbackUrl', pathname);
-      return NextResponse.redirect(loginUrl);
-    }
-  }
-
-  // Redirect authenticated users away from auth pages
-  if (authRoutes.some(route => pathname.startsWith(route))) {
-    if (isAuthenticated) {
-      return NextResponse.redirect(new URL('/app', request.url));
-    }
-  }
-
-  // Add security headers to all page responses
   const response = NextResponse.next();
 
   // Security headers

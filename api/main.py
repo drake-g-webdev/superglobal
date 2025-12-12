@@ -77,8 +77,8 @@ if PINECONE_API_KEY:
 else:
     logging.warning("PINECONE_API_KEY not set. Vector search disabled.")
 
-# LLM - Using GPT-4o for high-quality responses
-llm = ChatOpenAI(model="gpt-4o", temperature=0.7)
+# LLM - Using GPT-5.2 for high-quality responses
+llm = ChatOpenAI(model="gpt-5.2", temperature=0.7)
 
 # Perplexity API for web search
 PERPLEXITY_API_KEY = os.getenv("PERPLEXITY_API_KEY")
@@ -830,7 +830,7 @@ async def chat_stream(request: ChatRequest):
 
             # Stream the response
             logging.info("[Stream] Starting LLM streaming...")
-            streaming_llm = ChatOpenAI(model="gpt-4o", temperature=0.7, streaming=True)
+            streaming_llm = ChatOpenAI(model="gpt-5.2", temperature=0.7, streaming=True)
 
             async for chunk in streaming_llm.astream(messages):
                 if chunk.content:

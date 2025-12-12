@@ -1827,17 +1827,22 @@ When given daily/nightly rates, calculate the TOTAL for the trip:
 === CATEGORY-AWARE EXTRACTION ===
 Different cost types have different behaviors:
 
-ONE-TIME COSTS (quantity always 1, unit: "trip"):
+ONE-TIME COSTS (NEVER multiply by days - quantity always 1, unit: "trip"):
 - Visa fees, border fees
-- SIM cards, phone plans
-- Insurance
+- SIM cards, eSIMs, phone plans (these are ALWAYS one-time, even if they cover the whole trip)
+- Insurance (one-time purchase for the trip)
 - One-time tours/excursions
 - Flights
+- Gear purchases
 
-CALCULATED TOTALS (use trip duration):
+CRITICAL: SIM cards and eSIMs are ONE-TIME purchases. An eSIM for "$30-60" means you pay $30-60 ONCE for the whole trip, NOT per day!
+✅ "eSIM costs $30-60" → amount: 45, notes: "One-time purchase (range $30-60)"
+❌ "eSIM costs $30-60" → amount: 630, notes: "$45 × 14 days" (WRONG!)
+
+CALCULATED TOTALS (multiply daily rate × trip duration):
 - Accommodation: daily rate × trip days
 - Food: daily rate × trip days
-- Local transport: daily rate × trip days
+- Local transport: daily rate × trip days (NOT SIM cards!)
 
 === WHAT TO EXTRACT ===
 Extract costs from STRUCTURED CONTENT like:
@@ -1902,17 +1907,19 @@ Extract warnings about scams or overpriced places:
 A 2-week trip would need around:
 - Hostels: ~$12/night average
 - Food: $10/day
-- SIM card: $15 one-time"
+- eSIM: $30-60 (covers the whole trip)"
 
 === EXAMPLE OUTPUT 1 (for 14-day trip) ===
 {{
   "costs": [
     {{"category": "accommodation", "name": "Hostel Dorms (Quito)", "amount": 175, "quantity": 1, "unit": "trip", "notes": "$12.50/night avg (range $10-15) × 14 nights", "text_to_match": "$10-15/night for dorms", "is_range": true}},
     {{"category": "food", "name": "Daily Food Budget", "amount": 140, "quantity": 1, "unit": "trip", "notes": "$10/day × 14 days", "text_to_match": "Food: $10/day"}},
-    {{"category": "sim_connectivity", "name": "SIM Card", "amount": 15, "quantity": 1, "unit": "trip", "notes": "One-time purchase", "text_to_match": "SIM card: $15"}}
+    {{"category": "sim_connectivity", "name": "eSIM", "amount": 45, "quantity": 1, "unit": "trip", "notes": "One-time purchase (range $30-60)", "text_to_match": "eSIM: $30-60", "is_range": true}}
   ],
   "tourist_traps": []
 }}
+
+NOTE: The eSIM is $45 (midpoint of $30-60), NOT $45 × 14 days! SIMs/eSIMs are always one-time purchases.
 
 === EXAMPLE INPUT 2 (Budget Breakdown Format) ===
 "Budget Breakdown

@@ -1779,10 +1779,10 @@ async def geocode_location(request: GeocodeRequest):
 class ExtractedCost(BaseModel):
     category: str  # accommodation, transport_local, transport_flights, food, activities, visa_border, sim_connectivity, moped_rental, misc
     name: str
-    amount: float  # USD (total calculated for trip duration)
-    quantity: float = 1.0
-    unit: str = "trip"  # night, day, meal, trip, person
-    notes: str = ""  # Include original rate and calculation
+    amount: float  # USD rate (NOT total) - e.g., $15/night, $10/day, or $45 one-time
+    quantity: float = 1.0  # Usually 1
+    unit: str = "trip"  # "night", "day" = recurring (multiply by tripDays), "trip" = one-time
+    notes: str = ""  # Range info if applicable (e.g., "Range $10-15")
     text_to_match: str = ""  # Exact text from original to place button after
     is_range: bool = False  # True if extracted from a price range (e.g., "$10-15")
 
@@ -1809,141 +1809,96 @@ COST_EXTRACTION_PROMPT = """You are an expert travel budget analyst. Extract ALL
 
 DESTINATION: {destination}
 NUMBER OF TRAVELERS: {num_travelers}
-TRIP DURATION: {trip_days} days (use this to calculate daily costs)
 
-=== CRITICAL: HANDLE PRICE RANGES ===
+=== CRITICAL: EXTRACT RATES, NOT TOTALS ===
+DO NOT calculate totals. The frontend will calculate totals using the trip duration variable.
+Your job is to extract the RAW RATE and the correct UNIT.
+
+=== HANDLE PRICE RANGES ===
 When you see a price range like "$70-$140" or "$10-15":
-- Extract ONCE with the MIDPOINT as the amount
-- ✅ "$70-$140/night" → amount: 105, notes: "Range: $70-$140/night"
-- ✅ "dorms go for $10-15" → amount: 12.50, notes: "Range: $10-15/night"
-- ❌ DO NOT create two separate entries for the same range
+- Extract the MIDPOINT as the amount
+- Note the range in the notes field
+- ✅ "$70-$140/night" → amount: 105, unit: "night", notes: "Range $70-$140"
+- ✅ "dorms go for $10-15" → amount: 12.50, unit: "night", notes: "Range $10-15"
 
-=== CALCULATE TOTALS USING TRIP DURATION ===
-When given daily/nightly rates, calculate the TOTAL for the trip:
-- ✅ "$15/night" with 14-day trip → amount: 210, quantity: 1, unit: "trip", notes: "$15/night × 14 nights"
-- ✅ "$10/day for food" with 14 days → amount: 140, quantity: 1, unit: "trip", notes: "$10/day × 14 days"
-- ❌ DO NOT output amount: 15, quantity: 14 (this creates confusing UX)
+=== COST TYPES AND UNITS ===
 
-=== CATEGORY-AWARE EXTRACTION ===
-Different cost types have different behaviors:
+RECURRING COSTS (unit: "day" or "night"):
+These scale with trip duration. The frontend multiplies rate × tripDays.
+- Accommodation: unit: "night" (e.g., $15/night → amount: 15, unit: "night")
+- Food/meals: unit: "day" (e.g., $10/day → amount: 10, unit: "day")
+- Local transport: unit: "day" (e.g., $5/day → amount: 5, unit: "day")
+- Moped rental: unit: "day" (e.g., $8/day → amount: 8, unit: "day")
 
-ONE-TIME COSTS (NEVER multiply by days - quantity always 1, unit: "trip"):
+ONE-TIME COSTS (unit: "trip"):
+These do NOT scale with trip duration. Paid once for the whole trip.
 - Visa fees, border fees
-- SIM cards, eSIMs, phone plans (these are ALWAYS one-time, even if they cover the whole trip)
-- Insurance (one-time purchase for the trip)
-- One-time tours/excursions
+- SIM cards, eSIMs (ALWAYS one-time, even if "for the whole trip")
+- Insurance
+- Tours/excursions (specific activities, not daily)
 - Flights
 - Gear purchases
+- Ferry tickets, bus tickets (specific journeys)
 
-CRITICAL: SIM cards and eSIMs are ONE-TIME purchases. An eSIM for "$30-60" means you pay $30-60 ONCE for the whole trip, NOT per day!
-✅ "eSIM costs $30-60" → amount: 45, notes: "One-time purchase (range $30-60)"
-❌ "eSIM costs $30-60" → amount: 630, notes: "$45 × 14 days" (WRONG!)
+=== EXAMPLES ===
 
-CALCULATED TOTALS (multiply daily rate × trip duration):
-- Accommodation: daily rate × trip days
-- Food: daily rate × trip days
-- Local transport: daily rate × trip days (NOT SIM cards!)
+INPUT: "Hostels cost $10-15/night. Food is about $8/day. eSIM is $30-60."
+OUTPUT:
+{{
+  "costs": [
+    {{"category": "accommodation", "name": "Hostels", "amount": 12.5, "unit": "night", "notes": "Range $10-15", "is_range": true}},
+    {{"category": "food", "name": "Daily Food", "amount": 8, "unit": "day", "notes": ""}},
+    {{"category": "sim_connectivity", "name": "eSIM", "amount": 45, "unit": "trip", "notes": "Range $30-60", "is_range": true}}
+  ]
+}}
+
+INPUT: "Overnight ferry to Barisal: $15. Boat tour in Sundarbans: $65."
+OUTPUT:
+{{
+  "costs": [
+    {{"category": "transport_local", "name": "Overnight Ferry to Barisal", "amount": 15, "unit": "trip", "notes": ""}},
+    {{"category": "activities", "name": "Boat Tour in Sundarbans", "amount": 65, "unit": "trip", "notes": ""}}
+  ]
+}}
+
+INPUT: "Budget guesthouses run $6-10/night. CNG rickshaws cost $10-15/day."
+OUTPUT:
+{{
+  "costs": [
+    {{"category": "accommodation", "name": "Budget Guesthouses", "amount": 8, "unit": "night", "notes": "Range $6-10", "is_range": true}},
+    {{"category": "transport_local", "name": "CNG Rickshaws", "amount": 12.5, "unit": "day", "notes": "Range $10-15", "is_range": true}}
+  ]
+}}
 
 === WHAT TO EXTRACT ===
-Extract costs from STRUCTURED CONTENT like:
-- Bullet point lists with prices (e.g., "• Hostel: $15/night")
+- Bullet point lists with prices
 - Numbered lists with costs
-- Tables with price columns
-- Explicit "Budget Breakdown", "Estimated Costs", or "Total Costs" sections
-- Activity/location headings with prices under them (e.g., "Dhaka\nBoat Ride: $10")
-- Summary sections listing multiple costs (e.g., "Total for Two:\n- Item: $X\n- Item: $Y")
-- Numbered section breakdowns with costs (e.g., "2. K2 Base Camp Trek\nPermits and Fees: ~$300")
-- Costs with tildes indicating estimates (e.g., "~$1,200" or "~$150")
-- Line items with "Total for X Days" that represent category totals (NOT the grand trip total)
+- Budget breakdown sections
+- Specific venue/activity prices
+- Daily/nightly rates
+- One-time fees (visas, tours, tickets)
 
-1. SPECIFIC NAMED ITEMS: "Secret Garden Hostel: $15/night" → Calculate total
-2. BUDGET LINE ITEMS: From tables/breakdowns with clear prices
-3. RANGE PRICES: Use midpoint, note the range
-4. DAILY RATES: Calculate total for trip
-5. ACTIVITY COSTS: Tours, excursions, rentals with specific prices
-6. SUMMARY TOTALS: When a response ends with a cost summary, extract those items
-7. CATEGORY BREAKDOWNS: Numbered sections like "2. K2 Base Camp Trek (10-14 days)" with sub-costs
-8. ESTIMATED COSTS: Items with "~" (tilde) are estimates - extract the value as-is
-
-=== WHAT TO SKIP (CRITICAL) ===
-❌ General advice: "budget around $50/day", "you can get by on..."
-❌ Overall trip grand total: "Total Budget: $3,500" (the FINAL SUM of everything)
-❌ Duplicates: Same cost mentioned multiple times (prefer the summary version)
-❌ Vague amounts: "a few dollars", "relatively cheap"
-❌ Context-setting prices: "with $30/day you could..."
-❌ Comparison prices: "cheaper than the $100 tours"
-❌ Daily budget constraints: "Daily Budget: $50/day" (this is a constraint, not an expense)
-
-NOTE: "Total for 70 Days: $1,400" for a CATEGORY is extractable (it's the accommodation total).
-      "Total Trip Budget: $3,500" is NOT extractable (it's the grand sum of everything).
-
-IMPORTANT: If there's BOTH inline prices AND a summary section at the end, prefer extracting from the SUMMARY section to avoid duplicates.
-
-=== DEDUPLICATION RULES ===
-If the same expense appears multiple ways, extract ONCE with:
-- The most specific name
-- The calculated total (not daily rate)
-- The most complete notes
+=== WHAT TO SKIP ===
+❌ General advice: "budget around $50/day"
+❌ Grand totals: "Total Budget: $3,500"
+❌ Vague amounts: "a few dollars"
+❌ Pre-calculated trip totals (extract the daily rate instead)
 
 === OUTPUT FORMAT ===
-For each cost, provide:
+For each cost:
 - category: accommodation, transport_local, transport_flights, food, activities, visa_border, sim_connectivity, moped_rental, gear, insurance, misc
-- name: Descriptive name (venue name OR category with context)
-- amount: TOTAL cost in USD for this line item (calculated for trip duration)
-- quantity: Always 1 for calculated totals
-- unit: "trip" for calculated totals, or specific unit for one-time items
-- notes: Include original rate and calculation (e.g., "$15/night × 14 nights", "Range: $10-15")
-- text_to_match: EXACT phrase from text (include the price for accurate matching)
-- is_range: true if this was extracted from a price range
+- name: Descriptive name
+- amount: The rate in USD (NOT the total)
+- unit: "day", "night", or "trip"
+- notes: Include range info if applicable
+- text_to_match: Exact phrase from text for button placement
+- is_range: true if extracted from a price range
 
 === TOURIST TRAPS ===
 Extract warnings about scams or overpriced places:
 - name: The trap/scam name
 - description: What to watch out for
 - location: Where (optional)
-
-=== EXAMPLE INPUT 1 ===
-"Hostels in Quito range from $10-15/night for dorms. Food is cheap - street meals cost $2-5.
-A 2-week trip would need around:
-- Hostels: ~$12/night average
-- Food: $10/day
-- eSIM: $30-60 (covers the whole trip)"
-
-=== EXAMPLE OUTPUT 1 (for 14-day trip) ===
-{{
-  "costs": [
-    {{"category": "accommodation", "name": "Hostel Dorms (Quito)", "amount": 175, "quantity": 1, "unit": "trip", "notes": "$12.50/night avg (range $10-15) × 14 nights", "text_to_match": "$10-15/night for dorms", "is_range": true}},
-    {{"category": "food", "name": "Daily Food Budget", "amount": 140, "quantity": 1, "unit": "trip", "notes": "$10/day × 14 days", "text_to_match": "Food: $10/day"}},
-    {{"category": "sim_connectivity", "name": "eSIM", "amount": 45, "quantity": 1, "unit": "trip", "notes": "One-time purchase (range $30-60)", "text_to_match": "eSIM: $30-60", "is_range": true}}
-  ],
-  "tourist_traps": []
-}}
-
-NOTE: The eSIM is $45 (midpoint of $30-60), NOT $45 × 14 days! SIMs/eSIMs are always one-time purchases.
-
-=== EXAMPLE INPUT 2 (Budget Breakdown Format) ===
-"Budget Breakdown
-1. Daily Expenses (Food, Accommodation, Local Transport)
-Estimated Cost: $15 to $20/day
-Total for 70 Days: $1,050 to $1,400
-2. K2 Base Camp Trek (10-14 days)
-Permits and Fees: ~$300
-Guides and Porters: ~$1,200
-Transport to/from Skardu: ~$200
-Equipment and Supplies: ~$150
-Total Estimated Trek Cost: ~$1,850"
-
-=== EXAMPLE OUTPUT 2 (for 70-day trip) ===
-{{
-  "costs": [
-    {{"category": "food", "name": "Daily Expenses (Food, Accommodation, Transport)", "amount": 1225, "quantity": 1, "unit": "trip", "notes": "$17.50/day avg (range $15-20) × 70 days", "text_to_match": "Total for 70 Days: $1,050 to $1,400", "is_range": true}},
-    {{"category": "activities", "name": "K2 Trek - Permits and Fees", "amount": 300, "quantity": 1, "unit": "trip", "notes": "Estimated", "text_to_match": "Permits and Fees: ~$300"}},
-    {{"category": "activities", "name": "K2 Trek - Guides and Porters", "amount": 1200, "quantity": 1, "unit": "trip", "notes": "Estimated", "text_to_match": "Guides and Porters: ~$1,200"}},
-    {{"category": "transport_local", "name": "K2 Trek - Transport to/from Skardu", "amount": 200, "quantity": 1, "unit": "trip", "notes": "Estimated", "text_to_match": "Transport to/from Skardu: ~$200"}},
-    {{"category": "gear", "name": "K2 Trek - Equipment and Supplies", "amount": 150, "quantity": 1, "unit": "trip", "notes": "Rental/purchase of essentials", "text_to_match": "Equipment and Supplies: ~$150"}}
-  ],
-  "tourist_traps": []
-}}
 
 === TEXT TO ANALYZE ===
 {text}

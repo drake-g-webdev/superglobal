@@ -74,10 +74,17 @@ export default function CostDashboard() {
   const travelerCount = activeChat?.tripContext?.travelerCount || 1;
   const travelerLabel = travelerCount === 1 ? 'Solo' : travelerCount === 2 ? 'Couple' : `Group of ${travelerCount}`;
 
-  // Simple cost calculation - just amount × quantity
-  // The AI extraction API already handles per-person multiplication for activities/tours
+  // Calculate item total based on unit type
+  // Recurring costs (day/night) scale with trip duration
+  // One-time costs (trip) are just amount × quantity
   const getItemCost = (item: CostItem) => {
-    return item.amount * item.quantity;
+    if (item.unit === 'day' || item.unit === 'night') {
+      // Recurring cost: rate × tripDays
+      return item.amount * tripDays;
+    } else {
+      // One-time cost (trip, etc.): just amount × quantity
+      return item.amount * item.quantity;
+    }
   };
 
   // Calculate totals by category
@@ -90,7 +97,7 @@ export default function CostDashboard() {
     });
 
     return totals;
-  }, [costs]);
+  }, [costs, tripDays]);
 
   // Calculate grand total
   const grandTotal = useMemo(() => {
@@ -446,7 +453,13 @@ export default function CostDashboard() {
                           <div className="flex-1 min-w-0">
                             <p className="text-sm truncate">{item.name}</p>
                             <p className="text-xs text-stone-500">
-                              ${item.amount} × {item.quantity} {item.unit}
+                              {item.unit === 'day' || item.unit === 'night' ? (
+                                // Recurring cost: show rate × tripDays
+                                <>${item.amount}/{item.unit} × {tripDays} {item.unit === 'night' ? 'nights' : 'days'}</>
+                              ) : (
+                                // One-time cost: show amount × quantity
+                                <>${item.amount} × {item.quantity} {item.unit}</>
+                              )}
                               {item.isEstimate && <span className="ml-1 text-orange-400">(est)</span>}
                             </p>
                           </div>

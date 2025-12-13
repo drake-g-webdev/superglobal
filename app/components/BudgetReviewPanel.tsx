@@ -58,6 +58,19 @@ export default function BudgetReviewPanel({
   const [addedCosts, setAddedCosts] = useState<Set<string>>(new Set());
   const [updatedCosts, setUpdatedCosts] = useState<Set<string>>(new Set());
 
+  // Calculate cost total based on unit type
+  // Recurring costs (day/night) scale with trip duration
+  // One-time costs (trip) are just amount × quantity
+  const getCostTotal = (cost: ExtractedCost) => {
+    if (cost.unit === 'day' || cost.unit === 'night') {
+      // Recurring cost: rate × tripDays
+      return cost.amount * tripDays;
+    } else {
+      // One-time cost: amount × quantity
+      return cost.amount * cost.quantity;
+    }
+  };
+
   // Find if a cost matches an existing budget item by name (case-insensitive)
   const findMatchingBudgetItem = (cost: ExtractedCost): CostItem | null => {
     const nameLower = cost.name.toLowerCase();
@@ -67,6 +80,15 @@ export default function BudgetReviewPanel({
       item.name.toLowerCase().includes(nameLower) ||
       nameLower.includes(item.name.toLowerCase())
     ) || null;
+  };
+
+  // Helper to get total for existing CostItem (same logic as CostDashboard)
+  const getExistingItemTotal = (item: CostItem) => {
+    if (item.unit === 'day' || item.unit === 'night') {
+      return item.amount * tripDays;
+    } else {
+      return item.amount * item.quantity;
+    }
   };
 
   // Categorize costs into: new, updatable (same name, different amount), and exact duplicates
@@ -88,8 +110,8 @@ export default function BudgetReviewPanel({
       const matchingItem = findMatchingBudgetItem(cost);
 
       if (matchingItem) {
-        const existingTotal = matchingItem.amount * matchingItem.quantity;
-        const newTotal = cost.amount * cost.quantity;
+        const existingTotal = getExistingItemTotal(matchingItem);
+        const newTotal = getCostTotal(cost);
 
         // If amounts are significantly different (more than $5 or 10% difference), mark as updatable
         const difference = Math.abs(existingTotal - newTotal);
@@ -112,10 +134,10 @@ export default function BudgetReviewPanel({
       }
     });
 
-    const total = unique.reduce((sum, cost) => sum + (cost.amount * cost.quantity), 0);
+    const total = unique.reduce((sum, cost) => sum + getCostTotal(cost), 0);
 
     return { uniqueCosts: unique, updatableCosts: updatable, duplicateCosts: duplicates, totalNewCosts: total };
-  }, [costs, existingBudgetItems, addedCosts]);
+  }, [costs, existingBudgetItems, addedCosts, tripDays]);
 
   // Handle adding a single cost
   const handleAddCost = (cost: ExtractedCost) => {
@@ -139,17 +161,11 @@ export default function BudgetReviewPanel({
 
     const { extractedCost, existingItem } = updatable;
 
-    // Determine if this is a recurring cost based on unit
-    const isRecurring = ['night', 'nights', 'day', 'days'].includes(extractedCost.unit);
-    const perDay = isRecurring ? (extractedCost.quantity / tripDays) : undefined;
-
     onUpdateCost(existingItem.id, {
       amount: extractedCost.amount,
       quantity: extractedCost.quantity,
       unit: extractedCost.unit,
       notes: extractedCost.notes,
-      isRecurring,
-      perDay,
     });
 
     setUpdatedCosts(prev => new Set([...prev, extractedCost.name.toLowerCase()]));
@@ -263,13 +279,17 @@ export default function BudgetReviewPanel({
                           {/* Amount */}
                           <div className="text-right">
                             <span className="text-sm font-bold text-green-400">
-                              ${(cost.amount * cost.quantity).toFixed(0)}
+                              ${getCostTotal(cost).toFixed(0)}
                             </span>
-                            {cost.quantity > 1 && (
-                              <p className="text-[10px] text-stone-500">
-                                ${cost.amount} × {cost.quantity}
-                              </p>
-                            )}
+                            <p className="text-[10px] text-stone-500">
+                              {cost.unit === 'day' || cost.unit === 'night' ? (
+                                // Recurring: show rate × tripDays
+                                <>${cost.amount}/{cost.unit} × {tripDays} {cost.unit === 'night' ? 'nights' : 'days'}</>
+                              ) : (
+                                // One-time: show amount × quantity
+                                <>${cost.amount} × {cost.quantity} {cost.unit}</>
+                              )}
+                            </p>
                           </div>
 
                           {/* Actions */}

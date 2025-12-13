@@ -115,10 +115,10 @@ export type CostCategory =
 export interface ExtractedCost {
   name: string;
   category: CostCategory;
-  amount: number;  // Total calculated for trip duration
-  quantity: number;
-  unit: string;
-  notes: string;  // Includes original rate and calculation
+  amount: number;  // USD rate (NOT total) - e.g., $15/night, $10/day, or $45 one-time
+  quantity: number;  // Usually 1
+  unit: string;  // "night", "day" = recurring (multiply by tripDays), "trip" = one-time
+  notes: string;  // Range info if applicable (e.g., "Range $10-15")
   text_to_match?: string;  // AI-provided exact text to place button after
   is_range?: boolean;  // True if extracted from a price range (e.g., "$10-15")
 }
@@ -141,14 +141,12 @@ export interface CostItem {
   id: string;
   category: CostCategory;
   name: string;
-  amount: number; // USD per unit (e.g., $15/night)
-  quantity: number; // e.g., 14 nights, 3 meals/day
-  unit: string; // "night", "day", "trip", "meal", etc.
+  amount: number; // USD rate (NOT total) - e.g., $15/night, $10/day, or $45 one-time
+  quantity: number; // Usually 1
+  unit: string; // "night", "day" = recurring (multiply by tripDays), "trip" = one-time
   notes?: string;
   isEstimate: boolean; // true if auto-calculated from region data
   sourceMessageIndex?: number; // If extracted from AI response
-  isRecurring?: boolean; // true if this cost scales with trip length (accommodation, food, etc.)
-  perDay?: number; // For recurring costs, the daily rate (e.g., 3 meals/day)
 }
 
 export interface TripCosts {
@@ -920,44 +918,13 @@ export function ChatsProvider({ children }: { children: ReactNode }) {
 
       const newTripContext = { ...chat.tripContext, ...updates };
 
-      // If trip duration changed, scale recurring budget items
-      let newTripCosts = chat.tripCosts;
-      if (updates.tripDurationDays && updates.tripDurationDays !== chat.tripContext.tripDurationDays) {
-        const oldDays = chat.tripContext.tripDurationDays;
-        const newDays = updates.tripDurationDays;
-        console.log('[UpdateTripContext] Trip duration changed from', oldDays, 'to', newDays, '- scaling recurring costs');
-
-        newTripCosts = {
-          ...chat.tripCosts,
-          items: chat.tripCosts.items.map(item => {
-            // Scale items that are recurring (per day/night)
-            if (item.isRecurring && item.perDay) {
-              // Calculate new quantity based on daily rate and new trip length
-              const newQuantity = item.perDay * newDays;
-              console.log('[UpdateTripContext] Scaling', item.name, 'from', item.quantity, 'to', newQuantity);
-              return { ...item, quantity: newQuantity };
-            }
-            // Also scale items with "night" or "day" units even if not explicitly marked
-            if (item.unit === 'night' || item.unit === 'nights') {
-              const newQuantity = newDays;
-              console.log('[UpdateTripContext] Scaling nights for', item.name, 'from', item.quantity, 'to', newQuantity);
-              return { ...item, quantity: newQuantity, isRecurring: true, perDay: 1 };
-            }
-            if (item.unit === 'day' || item.unit === 'days') {
-              const newQuantity = newDays;
-              console.log('[UpdateTripContext] Scaling days for', item.name, 'from', item.quantity, 'to', newQuantity);
-              return { ...item, quantity: newQuantity, isRecurring: true, perDay: 1 };
-            }
-            return item;
-          }),
-          lastUpdated: Date.now(),
-        };
-      }
+      // Note: Budget items with unit "day" or "night" are automatically scaled
+      // because the total is calculated dynamically as rate × tripDays in the UI.
+      // No need to modify the stored items when trip duration changes.
 
       return {
         ...chat,
         tripContext: newTripContext,
-        tripCosts: newTripCosts,
         updatedAt: Date.now()
       };
     }));

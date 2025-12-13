@@ -14,7 +14,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "superglobal - AI Trip Planner",
+  title: "superglobal - Smart Travel Planning Tool",
   description: "Your AI-powered backpacker travel companion",
 };
 

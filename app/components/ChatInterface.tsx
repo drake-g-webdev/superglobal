@@ -1572,7 +1572,13 @@ export default function ChatInterface() {
                                     <span className="hidden sm:inline">{tCosts('title')}</span>
                                     {(activeChat?.tripCosts?.items?.length ?? 0) > 0 && (
                                         <span className="bg-green-600/30 text-green-400 text-[10px] px-1 py-0.5 rounded-full">
-                                            ${activeChat?.tripCosts?.items?.reduce((sum, item) => sum + item.amount * item.quantity, 0).toFixed(0)}
+                                            ${activeChat?.tripCosts?.items?.reduce((sum, item) => {
+                                                const tripDays = activeChat?.tripContext?.tripDurationDays || 14;
+                                                if (item.unit === 'day' || item.unit === 'night') {
+                                                    return sum + item.amount * tripDays;
+                                                }
+                                                return sum + item.amount * item.quantity;
+                                            }, 0).toFixed(0)}
                                         </span>
                                     )}
                                 </button>

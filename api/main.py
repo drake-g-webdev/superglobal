@@ -1879,10 +1879,26 @@ OUTPUT:
 - One-time fees (visas, tours, tickets)
 
 === WHAT TO SKIP ===
+❌ DO NOT extract "Daily Budget" or "Budget:" lines that summarize per-location spending
+   Example: "Budget: $35-$55/day" - this is guidance, NOT an extractable cost
+❌ DO NOT extract the same cost for each location (e.g., "food $10/day" mentioned 5 times = extract ONCE, not 5 times)
 ❌ General advice: "budget around $50/day"
-❌ Grand totals: "Total Budget: $3,500"
+❌ Grand totals: "Total Budget: $3,500" or "$50/day = $1,050 total"
 ❌ Vague amounts: "a few dollars"
 ❌ Pre-calculated trip totals (extract the daily rate instead)
+❌ Location-specific daily budget summaries like "Daily Budget in Rangamati: $35-55/day"
+
+=== DEDUPLICATION RULES ===
+Many responses mention the same cost category multiple times for different locations.
+You should ONLY extract ONE cost per category:
+- If "accommodation" is mentioned for 5 different cities, extract ONE average rate, not 5 separate items
+- If "food" budget is $8/day in one place and $12/day in another, extract ONE average or pick the most common
+- The frontend applies rates to the ENTIRE trip, so extracting per-location duplicates is WRONG
+
+Example of WRONG extraction:
+Input: "Srimangal: Budget $30-50/day. Rangamati: Budget $35-55/day. Chittagong: Budget $35-55/day"
+WRONG OUTPUT: 3 separate "Daily Budget" items ← THIS IS WRONG
+RIGHT OUTPUT: Skip all of these - they're summaries, not specific costs
 
 === OUTPUT FORMAT ===
 For each cost:
@@ -2551,10 +2567,16 @@ For each stop found, extract:
 RULES:
 1. Only extract if there's a clear itinerary with multiple stops and day counts
 2. Don't extract single location mentions without day counts
-3. Calculate days from ranges: "Days 1-3" = 3 days, "Days 4-6" = 3 days
+3. Calculate days from ranges CORRECTLY:
+   - "Days 1-3" = 3 days (inclusive: 1, 2, 3)
+   - "Days 4-6" = 3 days (inclusive: 4, 5, 6)
+   - "Days 11-14" = 4 days (inclusive: 11, 12, 13, 14)
+   - Formula: end_day - start_day + 1
 4. Be precise with location names - use the actual place mentioned
 5. For notes, focus on key activities, highlights, or travel tips mentioned for that stop
 6. Return empty list if no clear itinerary is present
+7. IMPORTANT: If the text mentions a specific trip length (e.g., "21-Day Itinerary"), make sure total_days matches!
+8. Don't skip travel/transit days - "Day 10: Travel day" still counts as 1 day
 
 Respond with ONLY valid JSON:
 {{

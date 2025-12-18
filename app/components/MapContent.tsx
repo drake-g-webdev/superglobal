@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import Globe from 'react-globe.gl';
@@ -21,12 +21,11 @@ interface GlobePin {
   lng: number;
   name: string;
   type: PinType;
-  chatId?: string; // For planned trips
-  size: number;
+  chatId?: string;
   color: string;
 }
 
-// Updated pin colors per user request
+// Pin colors - vibrant and distinct
 const PIN_COLORS = {
   visited: '#a855f7',  // Purple - places visited
   planned: '#22c55e',  // Green - trips in planning
@@ -36,7 +35,6 @@ const PIN_COLORS = {
 export default function MapContent() {
   const router = useRouter();
   const globeRef = useRef<any>(null);
-  const containerRef = useRef<HTMLDivElement>(null);
   const { isAuthenticated, isLoading: authLoading } = useAuth();
   const { profile } = useProfile();
   const { chats, createChat, setActiveChat, updateChat } = useChats();
@@ -44,7 +42,9 @@ export default function MapContent() {
   const [selectedPin, setSelectedPin] = useState<GlobePin | null>(null);
   const [globeReady, setGlobeReady] = useState(false);
   const [dimensions, setDimensions] = useState({ width: 1200, height: 800 });
-  const [isRotating, setIsRotating] = useState(true);
+
+  // Use ref to track rotation state to avoid stale closures
+  const isRotatingRef = useRef(true);
 
   // Redirect to landing page if not authenticated
   useEffect(() => {
@@ -72,7 +72,6 @@ export default function MapContent() {
     const result: GlobePin[] = [];
     const usedCoordinates = new Set<string>();
 
-    // Helper to get coordinates with slight offset for overlapping pins
     const getCoordinates = (country: string): { lat: number; lng: number } | null => {
       const coords = COUNTRY_COORDINATES[country];
       if (!coords) return null;
@@ -80,7 +79,6 @@ export default function MapContent() {
       let { lat, lng } = coords;
       const key = `${lat.toFixed(2)},${lng.toFixed(2)}`;
 
-      // Add slight offset for overlapping pins
       if (usedCoordinates.has(key)) {
         lat += (Math.random() - 0.5) * 3;
         lng += (Math.random() - 0.5) * 3;
@@ -90,8 +88,8 @@ export default function MapContent() {
       return { lat, lng };
     };
 
-    // Add visited countries (purple pins)
-    if (profile.countriesVisited && profile.countriesVisited.length > 0) {
+    // Visited countries (purple)
+    if (profile.countriesVisited?.length) {
       profile.countriesVisited.forEach((country, index) => {
         const coords = getCoordinates(country);
         if (coords) {
@@ -101,14 +99,13 @@ export default function MapContent() {
             lng: coords.lng,
             name: country,
             type: 'visited',
-            size: 0.8,
             color: PIN_COLORS.visited,
           });
         }
       });
     }
 
-    // Add planned trips (green pins) - only trips that have setup complete
+    // Planned trips (green)
     chats.forEach((chat) => {
       if (chat.tripSetupComplete && chat.destination && chat.destination !== 'General') {
         const coords = getCoordinates(chat.destination);
@@ -120,17 +117,15 @@ export default function MapContent() {
             name: chat.destination,
             type: 'planned',
             chatId: chat.id,
-            size: 1.0,
             color: PIN_COLORS.planned,
           });
         }
       }
     });
 
-    // Add bucket list destinations (orange pins)
-    if (profile.bucketList && profile.bucketList.length > 0) {
+    // Bucket list (orange)
+    if (profile.bucketList?.length) {
       profile.bucketList.forEach((country, index) => {
-        // Skip if already in planned trips
         const alreadyPlanned = chats.some(
           chat => chat.tripSetupComplete && chat.destination === country
         );
@@ -144,7 +139,6 @@ export default function MapContent() {
             lng: coords.lng,
             name: country,
             type: 'bucket',
-            size: 0.9,
             color: PIN_COLORS.bucket,
           });
         }
@@ -154,20 +148,20 @@ export default function MapContent() {
     return result;
   }, [profile.countriesVisited, profile.bucketList, chats]);
 
-  // Stop rotation when user interacts with globe
-  const handleGlobeInteraction = useCallback(() => {
-    if (isRotating && globeRef.current) {
+  // Stop rotation - uses ref to avoid stale closure issues
+  const stopRotation = () => {
+    if (isRotatingRef.current && globeRef.current) {
       globeRef.current.controls().autoRotate = false;
-      setIsRotating(false);
+      isRotatingRef.current = false;
     }
-  }, [isRotating]);
+  };
 
-  // Handle pin click
-  const handlePinClick = useCallback((pin: GlobePin) => {
-    handleGlobeInteraction();
+  // Handle pin click - stored in ref so HTML elements can access latest version
+  const handlePinClickRef = useRef<(pin: GlobePin) => void>(() => {});
+  handlePinClickRef.current = (pin: GlobePin) => {
+    stopRotation();
     setSelectedPin(pin);
 
-    // Focus globe on the pin
     if (globeRef.current) {
       globeRef.current.pointOfView({
         lat: pin.lat,
@@ -175,94 +169,88 @@ export default function MapContent() {
         altitude: 1.5,
       }, 1000);
     }
-  }, [handleGlobeInteraction]);
+  };
 
   // Handle action button click
-  const handleAction = useCallback(() => {
+  const handleAction = () => {
     if (!selectedPin) return;
 
     if (selectedPin.type === 'planned' && selectedPin.chatId) {
-      // Open the planned trip chat
       setActiveChat(selectedPin.chatId);
       router.push('/app');
     } else if (selectedPin.type === 'bucket') {
-      // Create a new trip with this destination and open the setup wizard
       const newChat = createChat(`Trip to ${selectedPin.name}`);
-      // Update the chat with the destination
       updateChat(newChat.id, { destination: selectedPin.name });
-      // Navigate to app with query param to open setup wizard
       router.push('/app?openSetup=true');
     }
-  }, [selectedPin, setActiveChat, createChat, updateChat, router]);
+  };
 
   // Set globe options when ready
   useEffect(() => {
     if (globeRef.current && globeReady) {
       const controls = globeRef.current.controls();
 
-      // Enable auto-rotation initially
       controls.autoRotate = true;
       controls.autoRotateSpeed = 0.3;
-
-      // Set initial view - altitude 1.5 for minimal padding around globe
       globeRef.current.pointOfView({ altitude: 1.5 }, 0);
 
-      // Stop rotation on any user interaction
-      controls.addEventListener('start', handleGlobeInteraction);
+      // Stop rotation on any user interaction with the controls
+      const handleInteraction = () => stopRotation();
+      controls.addEventListener('start', handleInteraction);
 
       return () => {
-        controls.removeEventListener('start', handleGlobeInteraction);
+        controls.removeEventListener('start', handleInteraction);
       };
     }
-  }, [globeReady, handleGlobeInteraction]);
+  }, [globeReady]);
 
-  // Custom HTML marker for pins - must include click handler in closure
-  const createPinElement = useCallback((d: GlobePin) => {
+  // Create pin HTML element - called by Globe for each pin
+  const createPinElement = (d: GlobePin) => {
     const el = document.createElement('div');
     el.style.cssText = `
-      width: 24px;
-      height: 24px;
+      width: 28px;
+      height: 28px;
       display: flex;
       align-items: center;
       justify-content: center;
       cursor: pointer;
-      transition: transform 0.2s;
+      pointer-events: auto;
     `;
 
-    // Create inner marker with ring design
+    // Simple solid circle with dark outline for visibility
     const inner = document.createElement('div');
     inner.style.cssText = `
-      width: 16px;
-      height: 16px;
+      width: 14px;
+      height: 14px;
       border-radius: 50%;
       background: ${d.color};
-      border: 3px solid white;
-      box-shadow: 0 2px 8px rgba(0,0,0,0.4), 0 0 0 2px ${d.color}40;
-      transition: transform 0.2s, box-shadow 0.2s;
+      border: 2px solid rgba(0,0,0,0.5);
+      box-shadow: 0 0 8px ${d.color}, 0 2px 4px rgba(0,0,0,0.5);
+      transition: transform 0.15s ease, box-shadow 0.15s ease;
     `;
 
     el.appendChild(inner);
 
-    // Click handler - use closure to capture pin data
+    // Click handler - use ref to always get latest handler
     el.addEventListener('click', (e) => {
+      e.preventDefault();
       e.stopPropagation();
-      handlePinClick(d);
+      handlePinClickRef.current(d);
     });
 
-    // Hover effect
+    // Hover effects
     el.addEventListener('mouseenter', () => {
-      inner.style.transform = 'scale(1.3)';
-      inner.style.boxShadow = `0 4px 12px rgba(0,0,0,0.5), 0 0 0 4px ${d.color}60`;
+      inner.style.transform = 'scale(1.4)';
+      inner.style.boxShadow = `0 0 16px ${d.color}, 0 4px 8px rgba(0,0,0,0.6)`;
     });
     el.addEventListener('mouseleave', () => {
       inner.style.transform = 'scale(1)';
-      inner.style.boxShadow = `0 2px 8px rgba(0,0,0,0.4), 0 0 0 2px ${d.color}40`;
+      inner.style.boxShadow = `0 0 8px ${d.color}, 0 2px 4px rgba(0,0,0,0.5)`;
     });
 
     return el;
-  }, [handlePinClick]);
+  };
 
-  // Show loading while checking auth
   if (authLoading) {
     return (
       <div className="min-h-screen bg-stone-900 flex items-center justify-center">
@@ -274,7 +262,6 @@ export default function MapContent() {
     );
   }
 
-  // Don't render if not authenticated
   if (!isAuthenticated) {
     return null;
   }
@@ -283,7 +270,6 @@ export default function MapContent() {
     <main className="flex min-h-screen flex-col bg-stone-900 text-stone-100">
       {/* Header */}
       <div className="z-20 w-full px-4 py-2 flex items-center justify-between border-b border-stone-800 bg-stone-900/95 backdrop-blur-sm">
-        {/* Left side - Back button and logo */}
         <div className="flex items-center gap-4">
           <Link
             href="/app"
@@ -297,8 +283,6 @@ export default function MapContent() {
             <span className="font-medium text-stone-200">My World Map</span>
           </div>
         </div>
-
-        {/* Right side - Profile dropdown */}
         <ProfileDropdown onOpenProfile={() => setIsProfileOpen(true)} />
       </div>
 
@@ -307,15 +291,24 @@ export default function MapContent() {
         <h3 className="text-sm font-medium text-stone-300 mb-3">Legend</h3>
         <div className="space-y-2.5">
           <div className="flex items-center gap-3">
-            <div className="w-4 h-4 rounded-full border-2 border-white shadow-sm" style={{ backgroundColor: PIN_COLORS.visited, boxShadow: `0 0 0 2px ${PIN_COLORS.visited}40` }} />
+            <div
+              className="w-3.5 h-3.5 rounded-full"
+              style={{ backgroundColor: PIN_COLORS.visited, boxShadow: `0 0 6px ${PIN_COLORS.visited}` }}
+            />
             <span className="text-xs text-stone-400">Places Visited ({profile.countriesVisited?.length || 0})</span>
           </div>
           <div className="flex items-center gap-3">
-            <div className="w-4 h-4 rounded-full border-2 border-white shadow-sm" style={{ backgroundColor: PIN_COLORS.planned, boxShadow: `0 0 0 2px ${PIN_COLORS.planned}40` }} />
+            <div
+              className="w-3.5 h-3.5 rounded-full"
+              style={{ backgroundColor: PIN_COLORS.planned, boxShadow: `0 0 6px ${PIN_COLORS.planned}` }}
+            />
             <span className="text-xs text-stone-400">Trips in Planning ({chats.filter(c => c.tripSetupComplete && c.destination !== 'General').length})</span>
           </div>
           <div className="flex items-center gap-3">
-            <div className="w-4 h-4 rounded-full border-2 border-white shadow-sm" style={{ backgroundColor: PIN_COLORS.bucket, boxShadow: `0 0 0 2px ${PIN_COLORS.bucket}40` }} />
+            <div
+              className="w-3.5 h-3.5 rounded-full"
+              style={{ backgroundColor: PIN_COLORS.bucket, boxShadow: `0 0 6px ${PIN_COLORS.bucket}` }}
+            />
             <span className="text-xs text-stone-400">Dream Destinations ({profile.bucketList?.length || 0})</span>
           </div>
         </div>
@@ -326,8 +319,8 @@ export default function MapContent() {
         <div className="absolute bottom-8 left-1/2 transform -translate-x-1/2 z-10 bg-stone-800/95 backdrop-blur-sm rounded-xl p-4 border border-stone-700 min-w-[280px] max-w-[400px] shadow-xl">
           <div className="flex items-start gap-3">
             <div
-              className="w-12 h-12 rounded-full flex items-center justify-center flex-shrink-0 border-2 border-white"
-              style={{ backgroundColor: selectedPin.color, boxShadow: `0 0 0 3px ${selectedPin.color}40` }}
+              className="w-12 h-12 rounded-full flex items-center justify-center flex-shrink-0"
+              style={{ backgroundColor: selectedPin.color, boxShadow: `0 0 12px ${selectedPin.color}` }}
             >
               {selectedPin.type === 'visited' && <MapPin size={20} className="text-white" />}
               {selectedPin.type === 'planned' && <Plane size={20} className="text-white" />}
@@ -349,11 +342,10 @@ export default function MapContent() {
             </button>
           </div>
 
-          {/* Action button for planned and bucket list */}
           {(selectedPin.type === 'planned' || selectedPin.type === 'bucket') && (
             <button
               onClick={handleAction}
-              className="mt-4 w-full text-white px-4 py-2.5 rounded-lg font-medium transition-colors flex items-center justify-center gap-2"
+              className="mt-4 w-full text-white px-4 py-2.5 rounded-lg font-medium transition-colors flex items-center justify-center gap-2 hover:brightness-110"
               style={{ backgroundColor: selectedPin.color }}
             >
               {selectedPin.type === 'planned' ? (
@@ -372,8 +364,8 @@ export default function MapContent() {
         </div>
       )}
 
-      {/* Globe Container */}
-      <div ref={containerRef} className="flex-1 relative" onClick={handleGlobeInteraction}>
+      {/* Globe */}
+      <div className="flex-1 relative">
         <Globe
           ref={globeRef}
           globeImageUrl="//unpkg.com/three-globe/example/img/earth-blue-marble.jpg"
@@ -391,7 +383,6 @@ export default function MapContent() {
         />
       </div>
 
-      {/* Profile Panel */}
       <ProfilePanel
         isOpen={isProfileOpen}
         onClose={() => setIsProfileOpen(false)}

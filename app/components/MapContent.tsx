@@ -204,8 +204,8 @@ export default function MapContent() {
       controls.autoRotate = true;
       controls.autoRotateSpeed = 0.3;
 
-      // Set initial view
-      globeRef.current.pointOfView({ altitude: 2.5 }, 0);
+      // Set initial view - altitude 1.5 for minimal padding around globe
+      globeRef.current.pointOfView({ altitude: 1.5 }, 0);
 
       // Stop rotation on any user interaction
       controls.addEventListener('start', handleGlobeInteraction);

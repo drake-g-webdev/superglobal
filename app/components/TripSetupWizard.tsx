@@ -354,6 +354,13 @@ export default function TripSetupWizard({ isOpen, onClose, chatId }: TripSetupWi
                   onChange={(e) => { setDestination(e.target.value); setShowDestinationSuggestions(true); }}
                   onFocus={() => setShowDestinationSuggestions(true)}
                   onBlur={() => setTimeout(() => setShowDestinationSuggestions(false), 200)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && filteredDestinations.length > 0) {
+                      e.preventDefault();
+                      setDestination(filteredDestinations[0]);
+                      setShowDestinationSuggestions(false);
+                    }
+                  }}
                   placeholder="e.g. Thailand, Peru, Vietnam..."
                   className={clsx(
                     "w-full bg-stone-800 rounded-lg px-4 py-3 focus:outline-none",

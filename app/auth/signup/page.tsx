@@ -615,10 +615,15 @@ export default function SignupPage() {
                           onKeyDown={(e) => {
                             if (e.key === 'Enter' && countryInput.trim()) {
                               e.preventDefault();
-                              if (!countriesVisited.includes(countryInput.trim())) {
-                                setCountriesVisited([...countriesVisited, countryInput.trim()]);
+                              // If there's a suggestion, use it; otherwise use raw input
+                              const toAdd = filteredCountrySuggestions.length > 0
+                                ? filteredCountrySuggestions[0]
+                                : countryInput.trim();
+                              if (!countriesVisited.includes(toAdd)) {
+                                setCountriesVisited([...countriesVisited, toAdd]);
                               }
                               setCountryInput('');
+                              setShowCountrySuggestions(false);
                             }
                           }}
                           placeholder={tProfile('addCountry')}
@@ -662,10 +667,15 @@ export default function SignupPage() {
                           onKeyDown={(e) => {
                             if (e.key === 'Enter' && bucketInput.trim()) {
                               e.preventDefault();
-                              if (!bucketList.includes(bucketInput.trim())) {
-                                setBucketList([...bucketList, bucketInput.trim()]);
+                              // If there's a suggestion, use it; otherwise use raw input
+                              const toAdd = filteredBucketSuggestions.length > 0
+                                ? filteredBucketSuggestions[0]
+                                : bucketInput.trim();
+                              if (!bucketList.includes(toAdd)) {
+                                setBucketList([...bucketList, toAdd]);
                               }
                               setBucketInput('');
+                              setShowBucketSuggestions(false);
                             }
                           }}
                           placeholder={tProfile('dreamDestinations')}

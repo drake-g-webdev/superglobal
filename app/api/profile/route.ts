@@ -106,6 +106,7 @@ export async function POST(request: NextRequest) {
         bucketList: data.bucketList || [],
         interests: data.interests || [],
         restrictions: data.restrictions || [],
+        whyTravel: data.whyTravel,
       },
       update: {
         countryOfOrigin: data.countryOfOrigin,
@@ -133,6 +134,7 @@ export async function POST(request: NextRequest) {
         bucketList: data.bucketList,
         interests: data.interests,
         restrictions: data.restrictions,
+        whyTravel: data.whyTravel,
       },
     });
 

@@ -108,6 +108,9 @@ model Profile {
   videoLocations            Boolean @default(false)
   sunriseSunsetOptimization Boolean @default(false)
 
+  // Why do you travel - core motivation
+  whyTravel String? @db.Text
+
   // Travel history & interests
   countriesVisited String[]
   bucketList       String[]

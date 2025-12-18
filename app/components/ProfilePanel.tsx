@@ -326,6 +326,7 @@ export default function ProfilePanel({ isOpen, onClose }: ProfilePanelProps) {
   // Local state for text inputs
   const [localName, setLocalName] = useState(profile.name || '');
   const [localOrigin, setLocalOrigin] = useState(profile.countryOfOrigin || '');
+  const [localWhyTravel, setLocalWhyTravel] = useState(profile.whyTravel || '');
   const [showOriginSuggestions, setShowOriginSuggestions] = useState(false);
   const [countryInput, setCountryInput] = useState('');
   const [bucketInput, setBucketInput] = useState('');
@@ -374,6 +375,7 @@ export default function ProfilePanel({ isOpen, onClose }: ProfilePanelProps) {
     if (isOpen) {
       setLocalName(profile.name || '');
       setLocalOrigin(profile.countryOfOrigin || '');
+      setLocalWhyTravel(profile.whyTravel || '');
     }
   }, [isOpen, profile]);
 
@@ -467,6 +469,19 @@ export default function ProfilePanel({ isOpen, onClose }: ProfilePanelProps) {
                         ))}
                       </div>
                     )}
+                  </div>
+
+                  <div>
+                    <label className="text-xs text-stone-400 uppercase font-bold">Why Do You Travel?</label>
+                    <p className="text-xs text-stone-500 mt-0.5 mb-1">This helps us understand your core motivation and tailor recommendations to what matters most to you.</p>
+                    <textarea
+                      value={localWhyTravel}
+                      onChange={(e) => setLocalWhyTravel(e.target.value)}
+                      onBlur={() => handleTextBlur('whyTravel', localWhyTravel)}
+                      placeholder="To escape the 9-5, find myself, chase adventure, connect with other cultures, heal from burnout, prove I can do it alone..."
+                      rows={3}
+                      className="w-full bg-stone-800 border border-stone-700 rounded px-3 py-2 text-sm focus:outline-none focus:border-orange-500 resize-none"
+                    />
                   </div>
 
                   </div>

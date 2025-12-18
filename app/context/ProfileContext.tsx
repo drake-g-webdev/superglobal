@@ -59,6 +59,9 @@ export interface UserProfile {
   instagramFriendly: boolean;
   hiddenSpots: boolean;
   videoFocus: boolean;
+
+  // Core motivation
+  whyTravel: string;
 }
 
 export const defaultActivityWeighting: ActivityWeighting = {
@@ -105,6 +108,9 @@ export const defaultProfile: UserProfile = {
   instagramFriendly: false,
   hiddenSpots: false,
   videoFocus: false,
+
+  // Core motivation
+  whyTravel: '',
 };
 
 interface ProfileContextType {
@@ -160,6 +166,8 @@ function dbToLocalProfile(dbProfile: Record<string, unknown>): Partial<UserProfi
     bucketList: (dbProfile.bucketList as string[]) || [],
     interests: (dbProfile.interests as string[]) || [],
     restrictions: (dbProfile.restrictions as string[]) || [],
+    // Core motivation
+    whyTravel: (dbProfile.whyTravel as string) || '',
   };
 }
 
@@ -191,6 +199,7 @@ function localToDbProfile(profile: UserProfile): Record<string, unknown> {
     bucketList: profile.bucketList || [],
     interests: profile.interests || [],
     restrictions: profile.restrictions || [],
+    whyTravel: profile.whyTravel || null,
   };
 }
 

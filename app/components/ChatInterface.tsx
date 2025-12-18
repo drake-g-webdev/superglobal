@@ -1114,6 +1114,7 @@ export default function ChatInterface() {
                 instagram_friendly: profile.instagramFriendly,
                 hidden_spots: profile.hiddenSpots,
                 video_focus: profile.videoFocus,
+                why_travel: profile.whyTravel,
             } : null,
             trip_context: activeChat.tripSetupComplete ? {
                 itinerary_breakdown: activeChat.tripContext.itineraryBreakdown,

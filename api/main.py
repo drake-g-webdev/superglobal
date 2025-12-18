@@ -256,6 +256,9 @@ class UserProfile(BaseModel):
     video_focus: bool = False
     sunrise_sunset_optimization: bool = False
 
+    # Core motivation
+    why_travel: str = ""
+
 
 # ============================================
 # PYDANTIC MODELS - Feature Set B (Trip Context)
@@ -354,6 +357,11 @@ def build_profile_section(profile: Optional[UserProfile]) -> str:
         sections.append(f"From: {profile.country_of_origin}")
     if profile.passport_country:
         sections.append(f"Passport: {profile.passport_country}")
+
+    # WHY THEY TRAVEL - This is crucial context for all recommendations
+    if profile.why_travel:
+        sections.append(f"\n🎯 WHY THEY TRAVEL: {profile.why_travel}")
+        sections.append("(IMPORTANT: Keep this core motivation in mind when making ALL recommendations)")
 
     # Travel Style
     sections.append(f"\nTravel Style: {profile.travel_style.replace('-', ' ').title()}")

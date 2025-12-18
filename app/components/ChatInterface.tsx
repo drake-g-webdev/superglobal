@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useRef, useEffect, useCallback } from 'react';
+import { useSearchParams, useRouter } from 'next/navigation';
 import { Send, MapPin, DollarSign, User, Settings, Compass, Calendar, Target, Map as MapIcon, Plus, Check, Loader2, MessageSquare, ChevronLeft, ChevronRight, Calculator, ListChecks, Backpack, CalendarDays, Mountain, Sailboat, Tent, Footprints, X, Menu, ArrowLeft, AlertTriangle, RefreshCw } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import ReactMarkdown, { Components } from 'react-markdown';
@@ -85,6 +86,8 @@ function ThinkingAnimation() {
 }
 
 export default function ChatInterface() {
+    const searchParams = useSearchParams();
+    const router = useRouter();
     const { activeChat, updateChat, addMessage, addMapPin, removeMapPin, addTouristTrap, updateMapView, mergeConversationVariables, setExtractedLocations, setExtractedCosts, setExtractedItinerary, addCostItem, updateCostItem, updateTripContext, updateMapPin } = useChats();
     const { profile, isProfileSet } = useProfile();
     const t = useTranslations('chat');
@@ -117,6 +120,16 @@ export default function ChatInterface() {
     const inFlightRef = useRef<Set<string>>(new Set());
 
     const messagesEndRef = useRef<HTMLDivElement>(null);
+
+    // Handle openSetup query param (from My Map page when starting a trip from dream destination)
+    useEffect(() => {
+        const openSetup = searchParams.get('openSetup');
+        if (openSetup === 'true' && activeChat) {
+            setIsTripSetupOpen(true);
+            // Clear the query param from URL without triggering navigation
+            router.replace('/app', { scroll: false });
+        }
+    }, [searchParams, activeChat, router]);
 
     // Get locations for current chat from persisted context (survives refresh)
     const messageLocations = activeChat?.extractedLocations || {};

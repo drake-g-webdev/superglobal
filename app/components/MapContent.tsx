@@ -22,26 +22,29 @@ interface GlobePin {
   name: string;
   type: PinType;
   chatId?: string; // For planned trips
-  altitude: number;
+  size: number;
   color: string;
 }
 
-// Pin colors
+// Updated pin colors per user request
 const PIN_COLORS = {
-  visited: '#22c55e',  // Green
-  planned: '#f97316',  // Orange
-  bucket: '#a855f7',   // Purple
+  visited: '#a855f7',  // Purple - places visited
+  planned: '#22c55e',  // Green - trips in planning
+  bucket: '#f97316',   // Orange - dream destinations
 };
 
 export default function MapContent() {
   const router = useRouter();
   const globeRef = useRef<any>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
   const { isAuthenticated, isLoading: authLoading } = useAuth();
   const { profile } = useProfile();
-  const { chats, createChat, setActiveChat } = useChats();
+  const { chats, createChat, setActiveChat, updateChat } = useChats();
   const [isProfileOpen, setIsProfileOpen] = useState(false);
   const [selectedPin, setSelectedPin] = useState<GlobePin | null>(null);
   const [globeReady, setGlobeReady] = useState(false);
+  const [dimensions, setDimensions] = useState({ width: 1200, height: 800 });
+  const [isRotating, setIsRotating] = useState(true);
 
   // Redirect to landing page if not authenticated
   useEffect(() => {
@@ -49,6 +52,20 @@ export default function MapContent() {
       router.push('/');
     }
   }, [authLoading, isAuthenticated, router]);
+
+  // Handle window resize
+  useEffect(() => {
+    const updateDimensions = () => {
+      setDimensions({
+        width: window.innerWidth,
+        height: window.innerHeight - 60,
+      });
+    };
+
+    updateDimensions();
+    window.addEventListener('resize', updateDimensions);
+    return () => window.removeEventListener('resize', updateDimensions);
+  }, []);
 
   // Build pins from profile and chats data
   const pins = useMemo((): GlobePin[] => {
@@ -65,15 +82,15 @@ export default function MapContent() {
 
       // Add slight offset for overlapping pins
       if (usedCoordinates.has(key)) {
-        lat += (Math.random() - 0.5) * 2;
-        lng += (Math.random() - 0.5) * 2;
+        lat += (Math.random() - 0.5) * 3;
+        lng += (Math.random() - 0.5) * 3;
       }
       usedCoordinates.add(key);
 
       return { lat, lng };
     };
 
-    // Add visited countries (green pins)
+    // Add visited countries (purple pins)
     if (profile.countriesVisited && profile.countriesVisited.length > 0) {
       profile.countriesVisited.forEach((country, index) => {
         const coords = getCoordinates(country);
@@ -84,14 +101,14 @@ export default function MapContent() {
             lng: coords.lng,
             name: country,
             type: 'visited',
-            altitude: 0.01,
+            size: 0.8,
             color: PIN_COLORS.visited,
           });
         }
       });
     }
 
-    // Add planned trips (orange pins) - only trips that have setup complete
+    // Add planned trips (green pins) - only trips that have setup complete
     chats.forEach((chat) => {
       if (chat.tripSetupComplete && chat.destination && chat.destination !== 'General') {
         const coords = getCoordinates(chat.destination);
@@ -103,14 +120,14 @@ export default function MapContent() {
             name: chat.destination,
             type: 'planned',
             chatId: chat.id,
-            altitude: 0.02,
+            size: 1.0,
             color: PIN_COLORS.planned,
           });
         }
       }
     });
 
-    // Add bucket list destinations (purple pins)
+    // Add bucket list destinations (orange pins)
     if (profile.bucketList && profile.bucketList.length > 0) {
       profile.bucketList.forEach((country, index) => {
         // Skip if already in planned trips
@@ -127,7 +144,7 @@ export default function MapContent() {
             lng: coords.lng,
             name: country,
             type: 'bucket',
-            altitude: 0.015,
+            size: 0.9,
             color: PIN_COLORS.bucket,
           });
         }
@@ -137,8 +154,17 @@ export default function MapContent() {
     return result;
   }, [profile.countriesVisited, profile.bucketList, chats]);
 
+  // Stop rotation when user interacts with globe
+  const handleGlobeInteraction = useCallback(() => {
+    if (isRotating && globeRef.current) {
+      globeRef.current.controls().autoRotate = false;
+      setIsRotating(false);
+    }
+  }, [isRotating]);
+
   // Handle pin click
   const handlePinClick = useCallback((pin: GlobePin) => {
+    handleGlobeInteraction();
     setSelectedPin(pin);
 
     // Focus globe on the pin
@@ -149,7 +175,7 @@ export default function MapContent() {
         altitude: 1.5,
       }, 1000);
     }
-  }, []);
+  }, [handleGlobeInteraction]);
 
   // Handle action button click
   const handleAction = useCallback(() => {
@@ -160,24 +186,81 @@ export default function MapContent() {
       setActiveChat(selectedPin.chatId);
       router.push('/app');
     } else if (selectedPin.type === 'bucket') {
-      // Create a new trip with this destination
+      // Create a new trip with this destination and open the setup wizard
       const newChat = createChat(`Trip to ${selectedPin.name}`);
-      // The new chat will be active, navigate to app
-      router.push('/app');
+      // Update the chat with the destination
+      updateChat(newChat.id, { destination: selectedPin.name });
+      // Navigate to app with query param to open setup wizard
+      router.push('/app?openSetup=true');
     }
-  }, [selectedPin, setActiveChat, createChat, router]);
+  }, [selectedPin, setActiveChat, createChat, updateChat, router]);
 
   // Set globe options when ready
   useEffect(() => {
     if (globeRef.current && globeReady) {
-      // Enable auto-rotation
-      globeRef.current.controls().autoRotate = true;
-      globeRef.current.controls().autoRotateSpeed = 0.3;
+      const controls = globeRef.current.controls();
+
+      // Enable auto-rotation initially
+      controls.autoRotate = true;
+      controls.autoRotateSpeed = 0.3;
 
       // Set initial view
       globeRef.current.pointOfView({ altitude: 2.5 }, 0);
+
+      // Stop rotation on any user interaction
+      controls.addEventListener('start', handleGlobeInteraction);
+
+      return () => {
+        controls.removeEventListener('start', handleGlobeInteraction);
+      };
     }
-  }, [globeReady]);
+  }, [globeReady, handleGlobeInteraction]);
+
+  // Custom HTML marker for pins - must include click handler in closure
+  const createPinElement = useCallback((d: GlobePin) => {
+    const el = document.createElement('div');
+    el.style.cssText = `
+      width: 24px;
+      height: 24px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      transition: transform 0.2s;
+    `;
+
+    // Create inner marker with ring design
+    const inner = document.createElement('div');
+    inner.style.cssText = `
+      width: 16px;
+      height: 16px;
+      border-radius: 50%;
+      background: ${d.color};
+      border: 3px solid white;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.4), 0 0 0 2px ${d.color}40;
+      transition: transform 0.2s, box-shadow 0.2s;
+    `;
+
+    el.appendChild(inner);
+
+    // Click handler - use closure to capture pin data
+    el.addEventListener('click', (e) => {
+      e.stopPropagation();
+      handlePinClick(d);
+    });
+
+    // Hover effect
+    el.addEventListener('mouseenter', () => {
+      inner.style.transform = 'scale(1.3)';
+      inner.style.boxShadow = `0 4px 12px rgba(0,0,0,0.5), 0 0 0 4px ${d.color}60`;
+    });
+    el.addEventListener('mouseleave', () => {
+      inner.style.transform = 'scale(1)';
+      inner.style.boxShadow = `0 2px 8px rgba(0,0,0,0.4), 0 0 0 2px ${d.color}40`;
+    });
+
+    return el;
+  }, [handlePinClick]);
 
   // Show loading while checking auth
   if (authLoading) {
@@ -222,17 +305,17 @@ export default function MapContent() {
       {/* Legend */}
       <div className="absolute top-20 left-4 z-10 bg-stone-800/90 backdrop-blur-sm rounded-lg p-4 border border-stone-700">
         <h3 className="text-sm font-medium text-stone-300 mb-3">Legend</h3>
-        <div className="space-y-2">
-          <div className="flex items-center gap-2">
-            <div className="w-3 h-3 rounded-full" style={{ backgroundColor: PIN_COLORS.visited }} />
+        <div className="space-y-2.5">
+          <div className="flex items-center gap-3">
+            <div className="w-4 h-4 rounded-full border-2 border-white shadow-sm" style={{ backgroundColor: PIN_COLORS.visited, boxShadow: `0 0 0 2px ${PIN_COLORS.visited}40` }} />
             <span className="text-xs text-stone-400">Places Visited ({profile.countriesVisited?.length || 0})</span>
           </div>
-          <div className="flex items-center gap-2">
-            <div className="w-3 h-3 rounded-full" style={{ backgroundColor: PIN_COLORS.planned }} />
-            <span className="text-xs text-stone-400">Planned Trips ({chats.filter(c => c.tripSetupComplete && c.destination !== 'General').length})</span>
+          <div className="flex items-center gap-3">
+            <div className="w-4 h-4 rounded-full border-2 border-white shadow-sm" style={{ backgroundColor: PIN_COLORS.planned, boxShadow: `0 0 0 2px ${PIN_COLORS.planned}40` }} />
+            <span className="text-xs text-stone-400">Trips in Planning ({chats.filter(c => c.tripSetupComplete && c.destination !== 'General').length})</span>
           </div>
-          <div className="flex items-center gap-2">
-            <div className="w-3 h-3 rounded-full" style={{ backgroundColor: PIN_COLORS.bucket }} />
+          <div className="flex items-center gap-3">
+            <div className="w-4 h-4 rounded-full border-2 border-white shadow-sm" style={{ backgroundColor: PIN_COLORS.bucket, boxShadow: `0 0 0 2px ${PIN_COLORS.bucket}40` }} />
             <span className="text-xs text-stone-400">Dream Destinations ({profile.bucketList?.length || 0})</span>
           </div>
         </div>
@@ -240,18 +323,18 @@ export default function MapContent() {
 
       {/* Selected Pin Info */}
       {selectedPin && (
-        <div className="absolute bottom-8 left-1/2 transform -translate-x-1/2 z-10 bg-stone-800/95 backdrop-blur-sm rounded-xl p-4 border border-stone-700 min-w-[280px] max-w-[400px]">
+        <div className="absolute bottom-8 left-1/2 transform -translate-x-1/2 z-10 bg-stone-800/95 backdrop-blur-sm rounded-xl p-4 border border-stone-700 min-w-[280px] max-w-[400px] shadow-xl">
           <div className="flex items-start gap-3">
             <div
-              className="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0"
-              style={{ backgroundColor: selectedPin.color + '20', border: `2px solid ${selectedPin.color}` }}
+              className="w-12 h-12 rounded-full flex items-center justify-center flex-shrink-0 border-2 border-white"
+              style={{ backgroundColor: selectedPin.color, boxShadow: `0 0 0 3px ${selectedPin.color}40` }}
             >
-              {selectedPin.type === 'visited' && <MapPin size={18} style={{ color: selectedPin.color }} />}
-              {selectedPin.type === 'planned' && <Plane size={18} style={{ color: selectedPin.color }} />}
-              {selectedPin.type === 'bucket' && <Star size={18} style={{ color: selectedPin.color }} />}
+              {selectedPin.type === 'visited' && <MapPin size={20} className="text-white" />}
+              {selectedPin.type === 'planned' && <Plane size={20} className="text-white" />}
+              {selectedPin.type === 'bucket' && <Star size={20} className="text-white" />}
             </div>
             <div className="flex-1">
-              <h3 className="font-medium text-stone-100">{selectedPin.name}</h3>
+              <h3 className="font-semibold text-stone-100 text-lg">{selectedPin.name}</h3>
               <p className="text-sm text-stone-400">
                 {selectedPin.type === 'visited' && "You've been here!"}
                 {selectedPin.type === 'planned' && "Trip in planning"}
@@ -260,7 +343,7 @@ export default function MapContent() {
             </div>
             <button
               onClick={() => setSelectedPin(null)}
-              className="text-stone-500 hover:text-stone-300 transition-colors"
+              className="text-stone-500 hover:text-stone-300 transition-colors text-xl leading-none"
             >
               &times;
             </button>
@@ -270,7 +353,8 @@ export default function MapContent() {
           {(selectedPin.type === 'planned' || selectedPin.type === 'bucket') && (
             <button
               onClick={handleAction}
-              className="mt-3 w-full bg-orange-600 hover:bg-orange-500 text-white px-4 py-2 rounded-lg font-medium transition-colors flex items-center justify-center gap-2"
+              className="mt-4 w-full text-white px-4 py-2.5 rounded-lg font-medium transition-colors flex items-center justify-center gap-2"
+              style={{ backgroundColor: selectedPin.color }}
             >
               {selectedPin.type === 'planned' ? (
                 <>
@@ -289,30 +373,19 @@ export default function MapContent() {
       )}
 
       {/* Globe Container */}
-      <div className="flex-1 relative">
+      <div ref={containerRef} className="flex-1 relative" onClick={handleGlobeInteraction}>
         <Globe
           ref={globeRef}
           globeImageUrl="//unpkg.com/three-globe/example/img/earth-blue-marble.jpg"
           bumpImageUrl="//unpkg.com/three-globe/example/img/earth-topology.png"
           backgroundImageUrl="//unpkg.com/three-globe/example/img/night-sky.png"
-          pointsData={pins}
-          pointLat="lat"
-          pointLng="lng"
-          pointAltitude="altitude"
-          pointColor="color"
-          pointRadius={0.5}
-          pointLabel={(d: any) => `
-            <div style="background: rgba(41, 37, 36, 0.95); padding: 8px 12px; border-radius: 8px; border: 1px solid rgba(120, 113, 108, 0.5);">
-              <div style="font-weight: 500; color: white;">${d.name}</div>
-              <div style="font-size: 11px; color: #a8a29e; margin-top: 2px;">
-                ${d.type === 'visited' ? '✓ Visited' : d.type === 'planned' ? '✈ Planned' : '★ Bucket List'}
-              </div>
-            </div>
-          `}
-          onPointClick={(point: any) => handlePinClick(point as GlobePin)}
+          htmlElementsData={pins}
+          htmlLat="lat"
+          htmlLng="lng"
+          htmlElement={(d: any) => createPinElement(d as GlobePin)}
           onGlobeReady={() => setGlobeReady(true)}
-          width={typeof window !== 'undefined' ? window.innerWidth : 1200}
-          height={typeof window !== 'undefined' ? window.innerHeight - 60 : 800}
+          width={dimensions.width}
+          height={dimensions.height}
           atmosphereColor="#f97316"
           atmosphereAltitude={0.15}
         />

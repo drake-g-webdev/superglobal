@@ -7,7 +7,7 @@ import ChatInterface from './ChatInterface';
 import ProfileDropdown from './ProfileDropdown';
 import ProfilePanel from './ProfilePanel';
 import { useAuth } from '../context/AuthContext';
-import { Loader2, Globe } from 'lucide-react';
+import { Loader2, Globe, Map } from 'lucide-react';
 
 export default function AppContent() {
   const router = useRouter();
@@ -53,8 +53,15 @@ export default function AppContent() {
           superglobal.travel
         </Link>
 
-        {/* Right side - Profile dropdown */}
+        {/* Right side - My Map link and Profile dropdown */}
         <div className="flex items-center gap-3">
+          <Link
+            href="/map"
+            className="flex items-center gap-2 text-stone-400 hover:text-stone-200 transition-colors px-3 py-2 rounded-lg hover:bg-stone-800/50"
+          >
+            <Map size={18} className="text-orange-500" />
+            <span className="hidden sm:inline text-sm">My Map</span>
+          </Link>
           <ProfileDropdown onOpenProfile={() => setIsProfileOpen(true)} />
         </div>
       </div>

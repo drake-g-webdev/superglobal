@@ -130,6 +130,17 @@ export default function SignupPage() {
   const [name, setName] = useState('');
   const [countryOfOrigin, setCountryOfOrigin] = useState('');
   const [showOriginSuggestions, setShowOriginSuggestions] = useState(false);
+  const [whyTravel, setWhyTravel] = useState('');
+
+  // Travel History & Dreams
+  const [countriesVisited, setCountriesVisited] = useState<string[]>([]);
+  const [countryInput, setCountryInput] = useState('');
+  const [showCountrySuggestions, setShowCountrySuggestions] = useState(false);
+  const [bucketList, setBucketList] = useState<string[]>([]);
+  const [bucketInput, setBucketInput] = useState('');
+  const [showBucketSuggestions, setShowBucketSuggestions] = useState(false);
+  const [interests, setInterests] = useState<string[]>([]);
+  const [interestInput, setInterestInput] = useState('');
 
   // Step 4: Travel Preferences
   const [riskTolerance, setRiskTolerance] = useState<'low' | 'medium' | 'high'>('medium');
@@ -158,6 +169,14 @@ export default function SignupPage() {
 
   const filteredOriginSuggestions = countryOfOrigin
     ? COUNTRIES.filter(c => c.toLowerCase().includes(countryOfOrigin.toLowerCase())).slice(0, 5)
+    : [];
+
+  const filteredCountrySuggestions = countryInput
+    ? COUNTRIES.filter(c => c.toLowerCase().includes(countryInput.toLowerCase()) && !countriesVisited.includes(c)).slice(0, 5)
+    : [];
+
+  const filteredBucketSuggestions = bucketInput
+    ? COUNTRIES.filter(c => c.toLowerCase().includes(bucketInput.toLowerCase()) && !bucketList.includes(c)).slice(0, 5)
     : [];
 
   const validateStep1 = async (): Promise<boolean> => {
@@ -261,6 +280,10 @@ export default function SignupPage() {
       const fullProfileData: Partial<UserProfile> = {
         name,
         countryOfOrigin,
+        whyTravel,
+        countriesVisited,
+        bucketList,
+        interests,
         riskTolerance,
         comfortThreshold,
         travelPace,
@@ -289,6 +312,10 @@ export default function SignupPage() {
       const dbProfileData = {
         name,
         countryOfOrigin,
+        whyTravel,
+        countriesVisited,
+        bucketList,
+        interests,
         riskTolerance,
         comfortThreshold: [comfortThreshold],
         travelPace,
@@ -584,6 +611,144 @@ export default function SignupPage() {
                             className="w-full text-left px-4 py-2 text-sm hover:bg-stone-600">
                             {country}
                           </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  <div>
+                    <label className="block text-xs text-stone-400 uppercase font-bold mb-1">Why Do You Travel?</label>
+                    <p className="text-xs text-stone-500 mb-2">This helps us understand your core motivation.</p>
+                    <textarea
+                      value={whyTravel}
+                      onChange={(e) => setWhyTravel(e.target.value)}
+                      placeholder="To escape the 9-5, find myself, chase adventure, connect with other cultures..."
+                      rows={2}
+                      className="w-full bg-stone-700 border border-stone-600 rounded-lg px-4 py-3 focus:outline-none focus:border-orange-500 resize-none text-sm"
+                    />
+                  </div>
+
+                  <div className="relative">
+                    <label className="block text-xs text-stone-400 uppercase font-bold mb-1">{tProfile('countriesVisited')}</label>
+                    <div className="flex gap-2">
+                      <div className="relative flex-1">
+                        <input
+                          type="text"
+                          value={countryInput}
+                          onChange={(e) => { setCountryInput(e.target.value); setShowCountrySuggestions(true); }}
+                          onFocus={() => setShowCountrySuggestions(true)}
+                          onBlur={() => setTimeout(() => setShowCountrySuggestions(false), 200)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter' && countryInput.trim()) {
+                              e.preventDefault();
+                              if (!countriesVisited.includes(countryInput.trim())) {
+                                setCountriesVisited([...countriesVisited, countryInput.trim()]);
+                              }
+                              setCountryInput('');
+                            }
+                          }}
+                          placeholder={tProfile('addCountry')}
+                          className="w-full bg-stone-700 border border-stone-600 rounded-lg px-4 py-2 focus:outline-none focus:border-orange-500 text-sm"
+                        />
+                        {showCountrySuggestions && filteredCountrySuggestions.length > 0 && (
+                          <div className="absolute z-10 w-full mt-1 bg-stone-700 border border-stone-600 rounded-lg shadow-lg max-h-32 overflow-y-auto">
+                            {filteredCountrySuggestions.map(country => (
+                              <button key={country} type="button" onMouseDown={(e) => e.preventDefault()}
+                                onClick={() => { setCountriesVisited([...countriesVisited, country]); setCountryInput(''); setShowCountrySuggestions(false); }}
+                                className="w-full text-left px-3 py-2 text-sm hover:bg-stone-600">
+                                {country}
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                    {countriesVisited.length > 0 && (
+                      <div className="flex flex-wrap gap-1 mt-2">
+                        {countriesVisited.map(c => (
+                          <span key={c} className="inline-flex items-center gap-1 bg-stone-600 text-xs px-2 py-1 rounded-full">
+                            {c}
+                            <button type="button" onClick={() => setCountriesVisited(countriesVisited.filter(x => x !== c))} className="hover:text-red-400">×</button>
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="relative">
+                    <label className="block text-xs text-stone-400 uppercase font-bold mb-1">{tProfile('bucketList')}</label>
+                    <div className="flex gap-2">
+                      <div className="relative flex-1">
+                        <input
+                          type="text"
+                          value={bucketInput}
+                          onChange={(e) => { setBucketInput(e.target.value); setShowBucketSuggestions(true); }}
+                          onFocus={() => setShowBucketSuggestions(true)}
+                          onBlur={() => setTimeout(() => setShowBucketSuggestions(false), 200)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter' && bucketInput.trim()) {
+                              e.preventDefault();
+                              if (!bucketList.includes(bucketInput.trim())) {
+                                setBucketList([...bucketList, bucketInput.trim()]);
+                              }
+                              setBucketInput('');
+                            }
+                          }}
+                          placeholder={tProfile('dreamDestinations')}
+                          className="w-full bg-stone-700 border border-stone-600 rounded-lg px-4 py-2 focus:outline-none focus:border-orange-500 text-sm"
+                        />
+                        {showBucketSuggestions && filteredBucketSuggestions.length > 0 && (
+                          <div className="absolute z-10 w-full mt-1 bg-stone-700 border border-stone-600 rounded-lg shadow-lg max-h-32 overflow-y-auto">
+                            {filteredBucketSuggestions.map(country => (
+                              <button key={country} type="button" onMouseDown={(e) => e.preventDefault()}
+                                onClick={() => { setBucketList([...bucketList, country]); setBucketInput(''); setShowBucketSuggestions(false); }}
+                                className="w-full text-left px-3 py-2 text-sm hover:bg-stone-600">
+                                {country}
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                    {bucketList.length > 0 && (
+                      <div className="flex flex-wrap gap-1 mt-2">
+                        {bucketList.map(c => (
+                          <span key={c} className="inline-flex items-center gap-1 bg-orange-600/30 text-xs px-2 py-1 rounded-full">
+                            {c}
+                            <button type="button" onClick={() => setBucketList(bucketList.filter(x => x !== c))} className="hover:text-red-400">×</button>
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  <div>
+                    <label className="block text-xs text-stone-400 uppercase font-bold mb-1">{tProfile('interests')}</label>
+                    <div className="flex gap-2">
+                      <input
+                        type="text"
+                        value={interestInput}
+                        onChange={(e) => setInterestInput(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' && interestInput.trim()) {
+                            e.preventDefault();
+                            if (!interests.includes(interestInput.trim())) {
+                              setInterests([...interests, interestInput.trim()]);
+                            }
+                            setInterestInput('');
+                          }
+                        }}
+                        placeholder={tProfile('interestsPlaceholder')}
+                        className="flex-1 bg-stone-700 border border-stone-600 rounded-lg px-4 py-2 focus:outline-none focus:border-orange-500 text-sm"
+                      />
+                    </div>
+                    {interests.length > 0 && (
+                      <div className="flex flex-wrap gap-1 mt-2">
+                        {interests.map(i => (
+                          <span key={i} className="inline-flex items-center gap-1 bg-stone-600 text-xs px-2 py-1 rounded-full">
+                            {i}
+                            <button type="button" onClick={() => setInterests(interests.filter(x => x !== i))} className="hover:text-red-400">×</button>
+                          </span>
                         ))}
                       </div>
                     )}

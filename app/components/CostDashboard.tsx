@@ -120,7 +120,9 @@ export default function CostDashboard() {
     CATEGORY_ORDER.forEach(cat => grouped[cat] = []);
 
     costs.forEach(item => {
-      grouped[item.category].push(item);
+      // Safety check: if category is undefined or not recognized, put in misc
+      const category = item.category && grouped[item.category] ? item.category : 'misc';
+      grouped[category].push(item);
     });
 
     return grouped;

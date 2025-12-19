@@ -78,12 +78,14 @@ export default function CostDashboard() {
   // Recurring costs (day/night) scale with trip duration
   // One-time costs (trip) are just amount × quantity
   const getItemCost = (item: CostItem) => {
+    const amount = item.amount || 0;
+    const quantity = item.quantity || 1;
     if (item.unit === 'day' || item.unit === 'night') {
       // Recurring cost: rate × tripDays
-      return item.amount * tripDays;
+      return amount * (tripDays || 1);
     } else {
       // One-time cost (trip, etc.): just amount × quantity
-      return item.amount * item.quantity;
+      return amount * quantity;
     }
   };
 
@@ -93,7 +95,9 @@ export default function CostDashboard() {
     CATEGORY_ORDER.forEach(cat => totals[cat] = 0);
 
     costs.forEach(item => {
-      totals[item.category] += getItemCost(item);
+      // Safety check: if category is undefined or not recognized, use misc
+      const category = item.category && totals[item.category] !== undefined ? item.category : 'misc';
+      totals[category] += getItemCost(item);
     });
 
     return totals;
